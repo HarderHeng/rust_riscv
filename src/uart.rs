@@ -41,6 +41,10 @@ mod reg {
     pub const MCR: usize = 4;
     /// Line Status Register (R).
     pub const LSR: usize = 5;
+    /// Divisor Latch LSB (when DLAB=1).
+    pub const DLL: usize = 0;
+    /// Divisor Latch MSB (when DLAB=1).
+    pub const DLM: usize = 1;
 }
 
 /// LSR bit 5 — Transmitter Holding Register Empty (TX ready).
@@ -88,14 +92,17 @@ impl Uart {
     pub fn init(&self) {
         self.write(reg::IER, 0x00);     // disable all interrupts
 
-        self.write(reg::LCR, LCR_DLAB); // enable divisor latch
+        self.write(reg::LCR, LCR_DLAB); // enable divisor latch (bit 7=1)
         // 38400 bps: divisor = 1_843_200 / (16 × 38400) = 3
-        self.write(0, 0x03);            // DLL (low byte of divisor)
-        self.write(1, 0x00);            // DLM (high byte of divisor)
+        self.write(reg::DLL, 0x03);     // DLL (low byte of divisor)
+        self.write(reg::DLM, 0x00);     // DLM (high byte of divisor)
 
-        self.write(reg::LCR, 0x03);     // 8N1, DLAB cleared
-        self.write(reg::FCR, 0xC7);     // enable + reset TX/RX FIFOs
-        self.write(reg::MCR, 0x03);     // assert DTR + RTS
+        // LCR = 0x03: 8 data bits (bits 1-0=11), no parity (bit 3=0), 1 stop bit (bit 2=0), DLAB cleared (bit 7=0)
+        self.write(reg::LCR, 0x03);
+        // FCR = 0xC7: enable FIFO (bit 0=1), clear RX FIFO (bit 1=1), clear TX FIFO (bit 2=1), trigger level 14 bytes (bits 7-6=11)
+        self.write(reg::FCR, 0xC7);
+        // MCR = 0x03: assert DTR (bit 0=1) + RTS (bit 1=1)
+        self.write(reg::MCR, 0x03);
     }
 
     /// Transmits one byte, blocking until the TX holding register is empty.

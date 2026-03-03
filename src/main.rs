@@ -23,7 +23,10 @@ macro_rules! kprint {
 #[macro_export]
 macro_rules! kprintln {
     ()              => { $crate::kprint!("\r\n") };
-    ($($arg:tt)*)   => { $crate::kprint!("{}\r\n", format_args!($($arg)*)) };
+    ($($arg:tt)*)   => {{
+        $crate::uart::print(format_args!($($arg)*));
+        $crate::uart::print(format_args!("\r\n"));
+    }};
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +55,7 @@ fn panic(info: &PanicInfo) -> ! {
     if let Some(loc) = info.location() {
         kprint!(" {}:{}", loc.file(), loc.line());
     }
+    kprint!(": {}", info.message());
     kprintln!();
     loop {
         unsafe { core::arch::asm!("wfi") };
