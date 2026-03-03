@@ -31,9 +31,12 @@ pub const UART0_BASE: usize = 0x1000_0000;
 mod reg {
     /// Transmit Holding Register (W) / Receive Buffer Register (R).
     pub const THR: usize = 0;
+    pub const RBR: usize = 0;
     /// Interrupt Enable Register.
     pub const IER: usize = 1;
-    /// FIFO Control Register (W).
+    /// Interrupt Identification Register (R) / FIFO Control Register (W).
+    #[allow(dead_code)]
+    pub const IIR: usize = 2;
     pub const FCR: usize = 2;
     /// Line Control Register.
     pub const LCR: usize = 3;
@@ -41,12 +44,22 @@ mod reg {
     pub const MCR: usize = 4;
     /// Line Status Register (R).
     pub const LSR: usize = 5;
+    /// Modem Status Register (R).
+    #[allow(dead_code)]
+    pub const MSR: usize = 6;
+    /// Scratch Register.
+    #[allow(dead_code)]
+    pub const SCR: usize = 7;
     /// Divisor Latch LSB (when DLAB=1).
     pub const DLL: usize = 0;
     /// Divisor Latch MSB (when DLAB=1).
     pub const DLM: usize = 1;
 }
 
+/// IER bit 0 — Received Data Available Interrupt Enable.
+const IER_RDA: u8 = 1 << 0;
+/// LSR bit 0 — Data Ready (RX has data).
+const LSR_DATA_READY: u8 = 1 << 0;
 /// LSR bit 5 — Transmitter Holding Register Empty (TX ready).
 const LSR_TX_IDLE: u8 = 1 << 5;
 /// LCR bit 7 — Divisor Latch Access Bit (enables baud-rate registers).
@@ -105,10 +118,46 @@ impl Uart {
         self.write(reg::MCR, 0x03);
     }
 
+    /// Enables RX data available interrupt.
+    ///
+    /// When data arrives in the RX FIFO, the UART will assert its interrupt line
+    /// (IRQ 10 on QEMU virt), which routes through PLIC to the CPU.
+    pub fn enable_rx_interrupt(&self) {
+        let mut ier = self.read(reg::IER);
+        ier |= IER_RDA;
+        self.write(reg::IER, ier);
+    }
+
+    /// Disables RX data available interrupt.
+    #[allow(dead_code)]
+    pub fn disable_rx_interrupt(&self) {
+        let mut ier = self.read(reg::IER);
+        ier &= !IER_RDA;
+        self.write(reg::IER, ier);
+    }
+
     /// Transmits one byte, blocking until the TX holding register is empty.
     pub fn putc(&self, byte: u8) {
         while self.read(reg::LSR) & LSR_TX_IDLE == 0 {}
         self.write(reg::THR, byte);
+    }
+
+    /// Tries to read one byte from the RX FIFO without blocking.
+    ///
+    /// Returns `Some(byte)` if data is available, or `None` if the RX FIFO is empty.
+    pub fn try_getc(&self) -> Option<u8> {
+        if self.read(reg::LSR) & LSR_DATA_READY != 0 {
+            Some(self.read(reg::RBR))
+        } else {
+            None
+        }
+    }
+
+    /// Reads one byte from the RX FIFO, blocking until data is available.
+    #[allow(dead_code)]
+    pub fn getc(&self) -> u8 {
+        while self.read(reg::LSR) & LSR_DATA_READY == 0 {}
+        self.read(reg::RBR)
     }
 
     /// Transmits every byte of `s`.

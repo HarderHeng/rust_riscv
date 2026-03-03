@@ -1,10 +1,13 @@
 #![no_std]
 #![no_main]
 
+mod plic;
 mod startup;
+mod trap;
 mod uart;
 
 use core::panic::PanicInfo;
+use plic::{Plic, UART0_IRQ};
 use uart::Uart;
 
 // ---------------------------------------------------------------------------
@@ -35,10 +38,37 @@ macro_rules! kprintln {
 
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
-    Uart::new(uart::UART0_BASE).init();
+    // Initialize UART
+    let uart = Uart::new(uart::UART0_BASE);
+    uart.init();
 
     kprintln!("Hello, World!");
     kprintln!("QEMU RISC-V32 bare-metal Rust kernel running.");
+    kprintln!();
+
+    // Initialize interrupt system
+    kprintln!("[INIT] Setting up trap handler...");
+    trap::init();
+
+    // Configure PLIC
+    kprintln!("[INIT] Configuring PLIC...");
+    let plic = Plic::new();
+    plic.set_priority(UART0_IRQ, 7);        // Set UART IRQ priority to highest
+    plic.enable_irq(0, UART0_IRQ);          // Enable UART IRQ for context 0 (Hart 0 M-mode)
+    plic.set_threshold(0, 0);               // Accept all interrupts (threshold = 0)
+
+    // Enable UART RX interrupt
+    kprintln!("[INIT] Enabling UART RX interrupt...");
+    uart.enable_rx_interrupt();
+
+    // Enable interrupts in CPU
+    kprintln!("[INIT] Enabling machine external interrupts...");
+    trap::enable_external_interrupts();
+    trap::enable_global_interrupts();
+
+    kprintln!();
+    kprintln!("Interrupt system initialized. Type to see echo:");
+    kprintln!();
 
     loop {
         unsafe { core::arch::asm!("wfi") };
