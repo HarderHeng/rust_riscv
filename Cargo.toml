@@ -1,20 +1,30 @@
-[package]
-name = "rust-riscv-kernel"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = [
+    "crates/hal",
+    "crates/riscv-common",
+    "crates/kernel",
+    "crates/boards/qemu-virt-rv32",
+    "crates/boards/bl808-e902",
+    "crates/boards/bl808-e907",
+    "crates/boards/bl808-c906",
+]
 
-[[bin]]
-name = "kernel"
-path = "src/main.rs"
-
-[profile.release]
-opt-level = "z"
-lto = true
-panic = "abort"
-
-[profile.dev]
-panic = "abort"
-
-[dependencies]
+[workspace.dependencies]
+# Shared dependencies across all workspace members
 spin = "0.9"
 heapless = "0.8"
+
+# Internal workspace crates
+hal = { path = "crates/hal" }
+riscv-common = { path = "crates/riscv-common" }
+kernel-core = { path = "crates/kernel" }
+
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Enable Link Time Optimization
+panic = "abort"      # Abort on panic (no unwinding in bare-metal)
+codegen-units = 1    # Better optimization with single codegen unit
+
+[profile.dev]
+panic = "abort"      # Abort on panic in debug builds too

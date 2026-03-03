@@ -1,0 +1,13 @@
+[package]
+name = "riscv-common"
+version = "0.1.0"
+edition = "2021"
+authors = ["RISC-V Kernel Team"]
+description = "Common RISC-V startup code and CSR utilities for RV32 and RV64"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "riscv_common"
+path = "src/lib.rs"
+
+[dependencies]

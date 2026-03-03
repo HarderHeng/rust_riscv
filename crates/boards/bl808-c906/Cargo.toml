@@ -1,0 +1,15 @@
+[package]
+name = "bl808-c906"
+version = "0.1.0"
+edition = "2021"
+authors = ["RISC-V Kernel Team"]
+description = "BL808 C906 (riscv64imac) board support - High-performance 64-bit core for Linux"
+
+[dependencies]
+hal = { path = "../../hal" }
+riscv-common = { path = "../../riscv-common" }
+kernel = { path = "../../kernel" }
+
+[[bin]]
+name = "bl808-c906"
+path = "src/main.rs"

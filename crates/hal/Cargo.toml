@@ -1,0 +1,12 @@
+[package]
+name = "hal"
+version = "0.1.0"
+edition = "2021"
+authors = ["RISC-V Kernel Team"]
+description = "Hardware Abstraction Layer traits for bare-metal RISC-V kernels"
+
+[dependencies]
+
+[lib]
+name = "hal"
+path = "src/lib.rs"

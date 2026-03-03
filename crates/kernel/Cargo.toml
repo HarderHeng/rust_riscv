@@ -1,0 +1,14 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# HAL trait definitions
+hal = { path = "../hal" }
+
+# Spinlock for interrupt-safe synchronization
+spin = "0.9"
+
+# Fixed-size collections (no allocator needed)
+heapless = "0.8"

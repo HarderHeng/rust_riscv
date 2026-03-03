@@ -1,0 +1,15 @@
+[package]
+name = "bl808-e907"
+version = "0.1.0"
+edition = "2021"
+authors = ["RISC-V Kernel Team"]
+description = "BL808 E907 (riscv32imacf) board support - M4F application core with FPU"
+
+[dependencies]
+hal = { path = "../../hal" }
+riscv-common = { path = "../../riscv-common" }
+kernel = { path = "../../kernel" }
+
+[[bin]]
+name = "bl808-e907"
+path = "src/main.rs"

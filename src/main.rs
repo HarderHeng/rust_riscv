@@ -20,23 +20,16 @@ use shell::commands::COMMANDS;
 /// UART receive interrupt handler.
 ///
 /// This function is called when UART0 receives data. It reads all available
-/// bytes from the UART FIFO and echoes them back with a newline.
+/// bytes from the UART FIFO and pushes them into the shell's input buffer.
 ///
 /// # Arguments
-/// * `irq` - The IRQ number (should be UART0_IRQ = 10)
-fn uart_irq_handler(irq: u32) {
+/// * `_irq` - The IRQ number (should be UART0_IRQ = 10, unused)
+fn uart_irq_handler(_irq: u32) {
     let uart = Uart::new(uart::UART0_BASE);
 
-    // Read all available bytes and echo them back
+    // Read all available bytes and push to shell input buffer
     while let Some(byte) = uart.try_getc() {
-        // Echo the character
-        uart.putc(byte);
-        uart.putc(b'\n');
-    }
-
-    // Could log which IRQ fired (useful if handler serves multiple IRQs)
-    if irq != UART0_IRQ {
-        kprintln!("[WARNING] uart_irq_handler called with unexpected IRQ {}", irq);
+        shell::uart_io::push_input_byte(byte);
     }
 }
 
