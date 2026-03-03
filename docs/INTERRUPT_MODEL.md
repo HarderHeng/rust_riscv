@@ -521,3 +521,211 @@ riscv32-elf-gdb kernel
 2. QEMU virt源码: `hw/riscv/virt.c`
 3. PLIC规范: RISC-V Platform-Level Interrupt Controller Specification
 4. CLINT规范: SiFive Core-Local Interrupt Controller
+
+---
+
+## 9. 中断回调注册系统
+
+本内核实现了一个灵活的中断回调注册系统，允许用户在运行时注册自定义的中断处理函数，而不是硬编码中断处理逻辑。
+
+### 9.1 系统架构
+
+```
+┌─────────────────────────────────────────────────────┐
+│             中断回调注册系统                          │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  核心中断 (Core Interrupts)                          │
+│  ┌─────────────────┐  ┌─────────────────┐          │
+│  │ SOFTWARE_HANDLER│  │  TIMER_HANDLER  │          │
+│  │  Mutex<Option>  │  │  Mutex<Option>  │          │
+│  └────────┬────────┘  └────────┬────────┘          │
+│           │                    │                    │
+│           └──────────┬─────────┘                    │
+│                      │                              │
+│  外部中断 (External Interrupts via PLIC)             │
+│  ┌─────────────────────────────────────┐            │
+│  │        IRQ_HANDLERS                 │            │
+│  │  Mutex<[Option<IrqHandler>; 128]>   │            │
+│  └─────────────────────────────────────┘            │
+│           │                                         │
+│           └─► IRQ 1-127 的回调函数                   │
+│                (IRQ 0 保留)                          │
+└─────────────────────────────────────────────────────┘
+```
+
+### 9.2 回调函数类型
+
+```rust
+/// 核心中断处理函数类型（软件中断、定时器中断）
+pub type CoreHandler = fn();
+
+/// 外部中断处理函数类型（PLIC中断）
+/// 参数: irq - 触发中断的IRQ编号
+pub type IrqHandler = fn(irq: u32);
+```
+
+### 9.3 API 函数
+
+#### 注册回调
+
+```rust
+// 注册软件中断处理函数
+pub fn register_software_handler(handler: CoreHandler);
+
+// 注册定时器中断处理函数
+pub fn register_timer_handler(handler: CoreHandler);
+
+// 注册外部中断处理函数
+// irq: IRQ编号 (1-127), IRQ 0 是保留的
+// handler: 回调函数
+// 返回: Ok(()) 成功, Err(&str) 失败
+pub fn register_irq_handler(irq: u32, handler: IrqHandler) -> Result<(), &'static str>;
+```
+
+#### 注销回调
+
+```rust
+// 注销软件中断处理函数
+pub fn unregister_software_handler();
+
+// 注销定时器中断处理函数
+pub fn unregister_timer_handler();
+
+// 注销外部中断处理函数
+// irq: IRQ编号 (1-127)
+// 返回: Ok(()) 成功, Err(&str) 失败
+pub fn unregister_irq_handler(irq: u32) -> Result<(), &'static str>;
+```
+
+### 9.4 使用示例
+
+#### 示例 1: 注册 UART 中断处理函数
+
+```rust
+use plic::UART0_IRQ;
+use uart::Uart;
+
+/// UART接收中断处理函数
+fn uart_irq_handler(irq: u32) {
+    let uart = Uart::new(uart::UART0_BASE);
+
+    // 读取所有可用字节并回显
+    while let Some(byte) = uart.try_getc() {
+        uart.putc(byte);
+        uart.putc(b'\n');
+    }
+}
+
+fn main() {
+    // ... 初始化 UART 和 PLIC ...
+
+    // 注册 UART 中断回调
+    trap::register_irq_handler(UART0_IRQ, uart_irq_handler)
+        .expect("Failed to register UART IRQ handler");
+
+    // 启用 UART RX 中断
+    uart.enable_rx_interrupt();
+
+    // 启用全局中断
+    trap::enable_external_interrupts();
+    trap::enable_global_interrupts();
+}
+```
+
+#### 示例 2: 注册定时器中断处理函数
+
+```rust
+/// 定时器中断处理函数
+fn timer_tick_handler() {
+    static mut TICK_COUNT: u64 = 0;
+
+    unsafe {
+        TICK_COUNT += 1;
+        if TICK_COUNT % 100 == 0 {
+            kprintln!("[TIMER] {} ticks", TICK_COUNT);
+        }
+    }
+
+    // 更新 MTIMECMP 以触发下一次中断
+    // (需要 CLINT 驱动支持)
+}
+
+fn main() {
+    // 注册定时器回调
+    trap::register_timer_handler(timer_tick_handler);
+
+    // 启用定时器中断 (mie.MTIE)
+    unsafe {
+        core::arch::asm!("csrs mie, {}", in(reg) 1 << 7);
+    }
+
+    // 启用全局中断
+    trap::enable_global_interrupts();
+}
+```
+
+#### 示例 3: 处理多个外部中断
+
+```rust
+/// 通用外部中断处理函数
+fn external_irq_handler(irq: u32) {
+    match irq {
+        10 => handle_uart(),
+        1..=8 => handle_virtio(irq),
+        _ => kprintln!("[IRQ] Unhandled IRQ {}", irq),
+    }
+}
+
+fn main() {
+    // 注册多个 IRQ 使用同一个处理函数
+    for irq in 1..=10 {
+        trap::register_irq_handler(irq, external_irq_handler).unwrap();
+    }
+}
+```
+
+### 9.5 线程安全与同步
+
+- **Mutex 保护**: 所有回调存储使用 `spin::Mutex` 保护
+- **无锁调用**: 调用回调前会释放 Mutex 锁，避免死锁
+- **中断安全**: 中断可以抢占主程序，但回调注册/注销是原子的
+
+### 9.6 错误处理
+
+```rust
+// 错误示例1: 注册 IRQ 0 (保留)
+match trap::register_irq_handler(0, my_handler) {
+    Ok(_) => {},
+    Err(e) => kprintln!("Error: {}", e),  // "IRQ 0 is reserved"
+}
+
+// 错误示例2: 注册超出范围的 IRQ
+match trap::register_irq_handler(200, my_handler) {
+    Ok(_) => {},
+    Err(e) => kprintln!("Error: {}", e),  // "IRQ number out of range"
+}
+```
+
+### 9.7 默认行为
+
+如果没有注册回调函数，中断系统会使用默认行为：
+
+- **软件中断**: 打印消息 `[INTERRUPT] Software (no handler registered)`
+- **定时器中断**: 打印消息 `[INTERRUPT] Timer (no handler registered)`
+- **外部中断**: 打印消息 `[INTERRUPT] External: IRQ N (no handler registered)`
+
+### 9.8 最佳实践
+
+1. **在启用中断前注册回调**: 确保回调已注册再启用对应的中断使能位
+2. **简短的回调函数**: 中断处理应尽量快速，避免长时间阻塞
+3. **避免在回调中注册/注销**: 不要在中断上下文中修改回调注册
+4. **检查返回值**: 注册 IRQ 时检查 `Result` 返回值
+5. **使用正确的 IRQ 号**: 参考 QEMU virt 中断映射表
+
+### 9.9 实现细节
+
+- **静态数组**: 使用固定大小的数组 `[Option<IrqHandler>; 128]`，不需要动态分配
+- **空间开销**: ~1KB (128 * 8 bytes per function pointer)
+- **时间开销**: O(1) 查找和注册
+- **no_std 兼容**: 不依赖标准库，使用 `spin` crate 提供同步原语

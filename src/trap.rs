@@ -5,6 +5,30 @@
 //! the Rust dispatcher (`trap_handler_rust`), and restores registers before
 //! returning via `mret`.
 //!
+//! # Callback Registration System
+//!
+//! This module provides a flexible callback registration system for handling
+//! interrupts. Instead of hardcoding interrupt handlers, users can register
+//! custom callback functions at runtime.
+//!
+//! ## Example
+//!
+//! ```rust
+//! use trap::{register_irq_handler, register_timer_handler};
+//!
+//! // Register a custom UART interrupt handler
+//! fn my_uart_handler(irq: u32) {
+//!     // Handle UART interrupt
+//! }
+//! register_irq_handler(10, my_uart_handler).unwrap();
+//!
+//! // Register a timer interrupt handler
+//! fn my_timer_handler() {
+//!     // Handle timer tick
+//! }
+//! register_timer_handler(my_timer_handler);
+//! ```
+//!
 //! # CSR Registers
 //!
 //! - `mtvec`: Trap vector base address, points to `trap_handler`.
@@ -13,9 +37,130 @@
 //! - `mstatus`: Machine status (MIE = global interrupt enable).
 //! - `mie`: Machine interrupt enable (MTIE, MSIE, MEIE).
 
-use crate::plic::{Plic, UART0_IRQ};
-use crate::uart::Uart;
-use crate::{kprintln, uart};
+use crate::plic::Plic;
+use crate::kprintln;
+use spin::Mutex;
+
+// ---------------------------------------------------------------------------
+// Callback types and storage
+// ---------------------------------------------------------------------------
+
+/// Handler function type for core interrupts (software, timer).
+///
+/// These handlers receive no parameters and are called directly from the
+/// trap dispatcher when the corresponding interrupt occurs.
+pub type CoreHandler = fn();
+
+/// Handler function type for external interrupts (from PLIC).
+///
+/// The handler receives the IRQ number that triggered the interrupt.
+/// This allows a single handler to potentially serve multiple IRQ sources.
+pub type IrqHandler = fn(irq: u32);
+
+/// Maximum number of external IRQ handlers (PLIC supports IRQ 0-127).
+const MAX_IRQ_HANDLERS: usize = 128;
+
+/// Storage for the software interrupt handler.
+static SOFTWARE_HANDLER: Mutex<Option<CoreHandler>> = Mutex::new(None);
+
+/// Storage for the timer interrupt handler.
+static TIMER_HANDLER: Mutex<Option<CoreHandler>> = Mutex::new(None);
+
+/// Storage for external interrupt handlers (indexed by IRQ number).
+/// IRQ 0 is reserved and should not be used.
+static IRQ_HANDLERS: Mutex<[Option<IrqHandler>; MAX_IRQ_HANDLERS]> =
+    Mutex::new([None; MAX_IRQ_HANDLERS]);
+
+// ---------------------------------------------------------------------------
+// Callback registration API
+// ---------------------------------------------------------------------------
+
+/// Registers a handler for machine software interrupts (MSI, code 3).
+///
+/// # Example
+/// ```rust
+/// fn my_software_handler() {
+///     // Handle software interrupt
+/// }
+/// trap::register_software_handler(my_software_handler);
+/// ```
+pub fn register_software_handler(handler: CoreHandler) {
+    *SOFTWARE_HANDLER.lock() = Some(handler);
+}
+
+/// Unregisters the software interrupt handler.
+pub fn unregister_software_handler() {
+    *SOFTWARE_HANDLER.lock() = None;
+}
+
+/// Registers a handler for machine timer interrupts (MTI, code 7).
+///
+/// # Example
+/// ```rust
+/// fn my_timer_handler() {
+///     // Handle timer interrupt
+/// }
+/// trap::register_timer_handler(my_timer_handler);
+/// ```
+pub fn register_timer_handler(handler: CoreHandler) {
+    *TIMER_HANDLER.lock() = Some(handler);
+}
+
+/// Unregisters the timer interrupt handler.
+pub fn unregister_timer_handler() {
+    *TIMER_HANDLER.lock() = None;
+}
+
+/// Registers a handler for external interrupts (MEI, code 11) from PLIC.
+///
+/// # Arguments
+/// * `irq` - The IRQ number (1-127). IRQ 0 is reserved and will return an error.
+/// * `handler` - The callback function to invoke when this IRQ fires.
+///
+/// # Returns
+/// * `Ok(())` if registration succeeded
+/// * `Err(&str)` if the IRQ number is invalid
+///
+/// # Example
+/// ```rust
+/// fn uart_handler(irq: u32) {
+///     // Handle UART interrupt
+/// }
+/// trap::register_irq_handler(10, uart_handler).unwrap();
+/// ```
+pub fn register_irq_handler(irq: u32, handler: IrqHandler) -> Result<(), &'static str> {
+    if irq == 0 {
+        return Err("IRQ 0 is reserved");
+    }
+    if irq >= MAX_IRQ_HANDLERS as u32 {
+        return Err("IRQ number out of range");
+    }
+
+    let mut handlers = IRQ_HANDLERS.lock();
+    handlers[irq as usize] = Some(handler);
+    Ok(())
+}
+
+/// Unregisters an external interrupt handler.
+///
+/// # Arguments
+/// * `irq` - The IRQ number to unregister
+///
+/// # Returns
+/// * `Ok(())` if unregistration succeeded
+/// * `Err(&str)` if the IRQ number is invalid
+pub fn unregister_irq_handler(irq: u32) -> Result<(), &'static str> {
+    if irq == 0 {
+        return Err("IRQ 0 is reserved");
+    }
+    if irq >= MAX_IRQ_HANDLERS as u32 {
+        return Err("IRQ number out of range");
+    }
+
+    let mut handlers = IRQ_HANDLERS.lock();
+    handlers[irq as usize] = None;
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // TrapFrame structure
@@ -194,16 +339,28 @@ extern "C" fn trap_handler_rust(_frame: &mut TrapFrame) {
 
 /// Handles machine software interrupt (MSI, code 3).
 fn handle_software_interrupt() {
-    kprintln!("[INTERRUPT] Software");
-    // To clear MSI: write 0 to CLINT MSIP register for this hart
-    // (Not implemented yet, CLINT driver needed)
+    // Call registered handler if available
+    if let Some(handler) = *SOFTWARE_HANDLER.lock() {
+        handler();
+    } else {
+        // Default behavior: print message
+        kprintln!("[INTERRUPT] Software (no handler registered)");
+        // To clear MSI: write 0 to CLINT MSIP register for this hart
+        // (Not implemented yet, CLINT driver needed)
+    }
 }
 
 /// Handles machine timer interrupt (MTI, code 7).
 fn handle_timer_interrupt() {
-    kprintln!("[INTERRUPT] Timer");
-    // To clear MTI: update CLINT MTIMECMP to a future value
-    // (Not implemented yet, CLINT driver needed)
+    // Call registered handler if available
+    if let Some(handler) = *TIMER_HANDLER.lock() {
+        handler();
+    } else {
+        // Default behavior: print message
+        kprintln!("[INTERRUPT] Timer (no handler registered)");
+        // To clear MTI: update CLINT MTIMECMP to a future value
+        // (Not implemented yet, CLINT driver needed)
+    }
 }
 
 /// Handles machine external interrupt (MEI, code 11, from PLIC).
@@ -216,25 +373,19 @@ fn handle_external_interrupt() {
         return;
     }
 
-    match irq {
-        UART0_IRQ => handle_uart_interrupt(),
-        _ => {
-            kprintln!("[INTERRUPT] External: unknown IRQ {}", irq);
-        }
+    // Call registered handler if available
+    let handlers = IRQ_HANDLERS.lock();
+    if let Some(handler) = handlers[irq as usize] {
+        // Release lock before calling handler to prevent deadlock
+        drop(handlers);
+        handler(irq);
+    } else {
+        // No handler registered for this IRQ
+        drop(handlers);
+        kprintln!("[INTERRUPT] External: IRQ {} (no handler registered)", irq);
     }
 
     plic.complete(0, irq);
-}
-
-/// Handles UART0 receive interrupt.
-fn handle_uart_interrupt() {
-    let uart = Uart::new(uart::UART0_BASE);
-
-    // Read all available bytes and echo them back
-    while let Some(byte) = uart.try_getc() {
-        // Echo the character
-        uart.putc(byte);
-    }
 }
 
 // ---------------------------------------------------------------------------

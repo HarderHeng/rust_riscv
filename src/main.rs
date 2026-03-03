@@ -11,6 +11,33 @@ use plic::{Plic, UART0_IRQ};
 use uart::Uart;
 
 // ---------------------------------------------------------------------------
+// Interrupt callback handlers
+// ---------------------------------------------------------------------------
+
+/// UART receive interrupt handler.
+///
+/// This function is called when UART0 receives data. It reads all available
+/// bytes from the UART FIFO and echoes them back with a newline.
+///
+/// # Arguments
+/// * `irq` - The IRQ number (should be UART0_IRQ = 10)
+fn uart_irq_handler(irq: u32) {
+    let uart = Uart::new(uart::UART0_BASE);
+
+    // Read all available bytes and echo them back
+    while let Some(byte) = uart.try_getc() {
+        // Echo the character
+        uart.putc(byte);
+        uart.putc(b'\n');
+    }
+
+    // Could log which IRQ fired (useful if handler serves multiple IRQs)
+    if irq != UART0_IRQ {
+        kprintln!("[WARNING] uart_irq_handler called with unexpected IRQ {}", irq);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Formatted output macros
 // ---------------------------------------------------------------------------
 
@@ -56,6 +83,11 @@ pub extern "C" fn kernel_main() -> ! {
     plic.set_priority(UART0_IRQ, 7);        // Set UART IRQ priority to highest
     plic.enable_irq(0, UART0_IRQ);          // Enable UART IRQ for context 0 (Hart 0 M-mode)
     plic.set_threshold(0, 0);               // Accept all interrupts (threshold = 0)
+
+    // Register UART interrupt callback
+    kprintln!("[INIT] Registering UART interrupt handler...");
+    trap::register_irq_handler(UART0_IRQ, uart_irq_handler)
+        .expect("Failed to register UART IRQ handler");
 
     // Enable UART RX interrupt
     kprintln!("[INIT] Enabling UART RX interrupt...");
