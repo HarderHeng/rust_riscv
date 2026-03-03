@@ -2,6 +2,7 @@
 #![no_main]
 
 mod plic;
+mod shell;
 mod startup;
 mod trap;
 mod uart;
@@ -9,6 +10,8 @@ mod uart;
 use core::panic::PanicInfo;
 use plic::{Plic, UART0_IRQ};
 use uart::Uart;
+use shell::{Shell, UartIO};
+use shell::commands::COMMANDS;
 
 // ---------------------------------------------------------------------------
 // Interrupt callback handlers
@@ -99,12 +102,15 @@ pub extern "C" fn kernel_main() -> ! {
     trap::enable_global_interrupts();
 
     kprintln!();
-    kprintln!("Interrupt system initialized. Type to see echo:");
+    kprintln!("Interrupt system initialized.");
+    kprintln!();
+    kprintln!("Starting shell...");
     kprintln!();
 
-    loop {
-        unsafe { core::arch::asm!("wfi") };
-    }
+    // Start the shell (runs forever)
+    let io = UartIO::uart0();
+    let mut shell = Shell::new(io, COMMANDS, "kernel> ");
+    shell.run()
 }
 
 // ---------------------------------------------------------------------------

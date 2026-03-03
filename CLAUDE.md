@@ -96,6 +96,12 @@ Memory sections (all in RAM):
 - `kernel_main()`: Main kernel function
 - `panic()`: Panic handler (prints location, then infinite WFI)
 
+**`src/shell/`**: Interactive command-line shell
+- `shell.rs`: Core shell implementation (ShellIO trait, Shell struct, parser)
+- `uart_io.rs`: UART adapter implementing ShellIO
+- `commands.rs`: Built-in commands (help, echo, clear, version, meminfo, etc.)
+- See `SHELL_README.md` for usage and `SHELL_EXTENSION_GUIDE.md` for adding commands
+
 ### Key Conventions
 
 1. **No standard library**: All code is `#![no_std]`, use `core::` instead of `std::`
