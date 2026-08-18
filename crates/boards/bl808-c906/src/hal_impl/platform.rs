@@ -1,12 +1,17 @@
-use hal::{InterruptController, Platform, SerialPort};
-use super::{uart_bl808::Bl808Uart, interrupt::Bl808InterruptController};
+//! BL808 C906 platform definition (placeholder).
 
+use hal::{MemoryLayout, Platform};
+
+use super::{interrupt::Bl808InterruptController, uart_bl808::Bl808Uart};
+
+/// Platform implementation for the BL808 C906 (riscv64imac, high-performance core).
 pub struct Bl808C906Platform {
     uart: Bl808Uart,
     interrupt_controller: Bl808InterruptController,
 }
 
 impl Bl808C906Platform {
+    /// Creates a new C906 platform instance.
     pub const fn new() -> Self {
         Self {
             // TODO: Replace with actual UART base address
@@ -18,34 +23,38 @@ impl Bl808C906Platform {
 
 impl Platform for Bl808C906Platform {
     type Serial = Bl808Uart;
-    type Interrupts = Bl808InterruptController;
+    type Interrupt = Bl808InterruptController;
 
-    fn init(&mut self) {
-        // TODO: Platform-level initialization for C906
-        // - Configure clocks (C906 runs at highest frequency)
-        // - Set up MMU/virtual memory if needed
-        // - Initialize cache (I-cache, D-cache)
-        // - Set up memory regions (may have more DRAM than E902/E907)
-        // - Initialize power management
-        // - Configure privilege modes (M-mode vs S-mode)
+    fn console(&self) -> &Self::Serial {
+        &self.uart
     }
 
-    fn serial_port(&mut self) -> &mut Self::Serial {
-        &mut self.uart
+    fn interrupt_controller(&self) -> &Self::Interrupt {
+        &self.interrupt_controller
     }
 
-    fn interrupt_controller(&mut self) -> &mut Self::Interrupts {
-        &mut self.interrupt_controller
+    fn console_irq(&self) -> u32 {
+        // TODO: Determine actual UART IRQ number
+        0
     }
 
-    fn board_name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "BL808 C906 (riscv64imac)"
     }
 
-    fn cpu_frequency_hz(&self) -> usize {
-        // TODO: Determine actual C906 frequency
-        // C906 typically runs at highest frequency
-        // Placeholder value - often 480MHz or higher
-        480_000_000
+    fn arch(&self) -> &'static str {
+        "riscv64imac"
+    }
+
+    fn reboot(&self) -> ! {
+        // TODO: Implement BL808 reboot sequence
+        loop {
+            unsafe { core::arch::asm!("wfi") }
+        }
+    }
+
+    fn memory_layout(&self) -> MemoryLayout {
+        // TODO: Populate from linker script symbols once defined
+        MemoryLayout::new(0..0, 0..0, 0..0, 0..0, 0..0)
     }
 }

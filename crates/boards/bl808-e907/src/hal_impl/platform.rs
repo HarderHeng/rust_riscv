@@ -1,12 +1,17 @@
-use hal::{InterruptController, Platform, SerialPort};
-use super::{uart_bl808::Bl808Uart, interrupt::Bl808InterruptController};
+//! BL808 E907 platform definition (placeholder).
 
+use hal::{MemoryLayout, Platform};
+
+use super::{interrupt::Bl808InterruptController, uart_bl808::Bl808Uart};
+
+/// Platform implementation for the BL808 E907 (riscv32imacf, M4F application core).
 pub struct Bl808E907Platform {
     uart: Bl808Uart,
     interrupt_controller: Bl808InterruptController,
 }
 
 impl Bl808E907Platform {
+    /// Creates a new E907 platform instance.
     pub const fn new() -> Self {
         Self {
             // TODO: Replace with actual UART base address
@@ -18,32 +23,38 @@ impl Bl808E907Platform {
 
 impl Platform for Bl808E907Platform {
     type Serial = Bl808Uart;
-    type Interrupts = Bl808InterruptController;
+    type Interrupt = Bl808InterruptController;
 
-    fn init(&mut self) {
-        // TODO: Platform-level initialization
-        // - Configure clocks (E907 may run at higher frequency than E902)
-        // - Enable hardware FPU
-        // - Set up memory regions
-        // - Initialize power management
+    fn console(&self) -> &Self::Serial {
+        &self.uart
     }
 
-    fn serial_port(&mut self) -> &mut Self::Serial {
-        &mut self.uart
+    fn interrupt_controller(&self) -> &Self::Interrupt {
+        &self.interrupt_controller
     }
 
-    fn interrupt_controller(&mut self) -> &mut Self::Interrupts {
-        &mut self.interrupt_controller
+    fn console_irq(&self) -> u32 {
+        // TODO: Determine actual UART IRQ number
+        0
     }
 
-    fn board_name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "BL808 E907 (riscv32imacf)"
     }
 
-    fn cpu_frequency_hz(&self) -> usize {
-        // TODO: Determine actual E907 frequency
-        // E907 typically runs faster than E902
-        // Placeholder value
-        400_000_000
+    fn arch(&self) -> &'static str {
+        "riscv32imacf"
+    }
+
+    fn reboot(&self) -> ! {
+        // TODO: Implement BL808 reboot sequence
+        loop {
+            unsafe { core::arch::asm!("wfi") }
+        }
+    }
+
+    fn memory_layout(&self) -> MemoryLayout {
+        // TODO: Populate from linker script symbols once defined
+        MemoryLayout::new(0..0, 0..0, 0..0, 0..0, 0..0)
     }
 }
