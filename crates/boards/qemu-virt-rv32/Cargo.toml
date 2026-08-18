@@ -12,12 +12,3 @@ hal = { path = "../../hal" }
 
 # RISC-V common utilities (startup code, CSR access)
 riscv-common = { path = "../../riscv-common" }
-
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
-opt-level = "z"      # Optimize for size
-lto = true           # Enable link-time optimization
-codegen-units = 1    # Better optimization, slower compile

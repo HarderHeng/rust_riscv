@@ -1,216 +1,113 @@
 # RISC-V Bare-Metal Rust Kernel
 
-A minimalist bare-metal kernel written in Rust for RISC-V 32-bit architecture, running on QEMU's `virt` machine. This project demonstrates low-level systems programming without an operating system or C runtime.
+用 Rust 从零编写、无操作系统依赖的 RISC-V 32 位裸机内核，目前运行在 QEMU 模拟的 `virt` 虚拟机上。适合学习底层系统编程、RISC-V 架构和嵌入式 Rust 的实践项目。
 
-## Features
+`#![no_std]` + `#![no_main]`，不依赖任何 C 运行时——从引导汇编、串口驱动到中断处理和交互式 Shell，全部自己实现。
 
-- **Pure Rust**: Written entirely in Rust with `#![no_std]` and `#![no_main]`
-- **RISC-V 32-bit**: Target architecture `riscv32imac-unknown-none-elf`
-  - `i`: Integer base instruction set
-  - `m`: Multiplication/division extensions
-  - `a`: Atomic instructions
-  - `c`: Compressed 16-bit instructions
-- **Bare-metal**: No operating system, no C runtime, direct hardware control
-- **UART Driver**: 16550A UART driver for serial output with formatted printing
-- **Custom Linker Script**: Precise control over memory layout
-- **QEMU Support**: Ready to run on QEMU's RISC-V virt machine
+## 技术栈概览
 
-## Quick Start
+| 项目 | 说明 |
+|---|---|
+| 语言 | Rust（`riscv32imac-unknown-none-elf` 目标，`no_std` / `no_main`） |
+| 架构 | RISC-V 32 位（RV32IMAC：整数 / 乘除 / 原子 / 压缩指令） |
+| 运行环境 | QEMU `virt` 虚拟机（`qemu-system-riscv32`） |
+| 硬件外设 | 16550A UART 串口、PLIC / CLINT 中断控制器 |
+| 内存布局 | 自定义 `linker.ld` 链接脚本（代码 / 数据 / BSS / 64 KiB 栈） |
 
-### Prerequisites
+## 它做了什么
 
-- Rust toolchain with `riscv32imac-unknown-none-elf` target
-- QEMU RISC-V emulator (`qemu-system-riscv32`)
-- (Optional) RISC-V GDB for debugging
+启动引导（汇编 `_start` 设置栈、清零 BSS）→ UART 串口驱动输出 → 机器模式中断系统（UART 接收、PLIC 外部中断、可注册回调）→ 进入一个可交互的 Shell（`help` / `echo` / `meminfo` / `reboot` 等命令）。
 
-Install the Rust target:
+## 快速开始
+
+前置依赖：
+
+- Rust 工具链（`rustup`）与 RISC-V 目标：`rustup target add riscv32imac-unknown-none-elf`
+- QEMU RISC-V 模拟器：`qemu-system-riscv32`
+
+构建并运行：
+
 ```bash
-rustup target add riscv32imac-unknown-none-elf
+cargo build              # 编译
+cargo run                # 在 QEMU 中运行
+cargo run --release      # 优化构建后运行
 ```
 
-### Build and Run
+预期输出：
 
-Build the kernel:
+```
+=================================
+  Bare-Metal RISC-V Kernel
+=================================
+[KERNEL] Trap handler initialized
+[KERNEL] Console RX interrupt enabled
+[KERNEL] Interrupts enabled
+
+riscv32> help
+```
+
+QEMU 中按 `Ctrl-A` 然后 `X` 退出。
+
+## 项目结构
+
+```text
+├── crates/
+│   ├── hal/               # 硬件抽象层：Platform / SerialPort / InterruptController trait
+│   ├── riscv-common/      # 共享启动代码 + CSR 工具（自动区分 rv32 / rv64）
+│   ├── kernel/            # 平台无关内核：Shell + 中断分发
+│   └── boards/
+│       ├── qemu-virt-rv32/   # ✅ QEMU 虚拟机板级支持（完整可用）
+│       ├── bl808-e902/       # ⚠️ 真实芯片占位（RV32EMC 低功耗核）
+│       ├── bl808-e907/       # ⚠️ 真实芯片占位（RV32IMACF 应用核）
+│       └── bl808-c906/       # ⚠️ 真实芯片占位（RV64IMAC，目标 Linux）
+├── docs/                  # 项目文档（规格 / 计划 / 架构，见下方导航）
+├── linker.ld              # 链接脚本：内存布局
+└── Cargo.toml             # workspace 配置
+```
+
+内核代码不直接碰硬件，而是面向 HAL 的 `Platform` trait 编程；每块板子提供自己的实现。QEMU 板是当前完整可用的参考实现，三个 BL808 真实芯片板为占位骨架（等待硬件数据手册补齐内存映射与寄存器规格）。
+
+## 文档导航
+
+| 文档 | 读者 | 内容 |
+|---|---|---|
+| [README.md](README.md) | 所有访客 | 这是啥、怎么跑（本文档） |
+| [AGENTS.md](AGENTS.md) | AI Agent + 开发者 | 行为约束、代码分层、常用命令、文档索引 |
+| [docs/spec/](docs/spec/) | 实现者 | 资源与接口规格：内存映射、Shell 命令与扩展指南 |
+| [docs/plan/](docs/plan/) | 维护者 | 计划与过程：评审报告、已修复问题、路线图 |
+| [docs/architecture/](docs/architecture/) | 架构师 / 深度参与者 | 设计原理与机制细节：HAL 分层、Shell 架构、中断模型 |
+
+完整索引见 [docs/README.md](docs/README.md)。
+
+## 调试
+
 ```bash
-cargo build                    # Debug build
-cargo build --release          # Optimized release build
+cargo run -- gdb                    # QEMU 挂起等待 GDB（端口 1234）
+riscv32-unknown-elf-gdb target/riscv32imac-unknown-none-elf/debug/qemu-virt-rv32
+# (gdb) target remote :1234
 ```
 
-Run in QEMU:
+查看生成信息：
+
 ```bash
-cargo run                      # Build and run kernel in QEMU
-cargo run --release            # Run optimized kernel
+less kernel.map                     # 内存映射
+rust-objdump -d <elf>               # 反汇编
+rust-size <elf>                     # 各段大小
 ```
 
-Expected output:
-```
-RISC-V Bare-Metal Kernel
-Initializing...
-Hello from Rust kernel!
-Kernel running, waiting for interrupts...
-```
+## 常见问题
 
-Press `Ctrl-A` then `X` to exit QEMU.
+- **内核没输出**：确认 UART 已在 `kernel_main` 开头初始化（`PLATFORM.console().init()`）。
+- **QEMU 立即退出**：`kernel_main` 不能返回，必须以死循环（Shell 的 `run()` 或 `wfi`）结尾。
+- **链接错误 / undefined symbol**：确认根目录 `linker.ld` 存在，且 `build.rs` 声明了对它的依赖。
 
-### Debug with GDB
+## 许可
 
-Launch QEMU in debug mode (suspended, waiting for GDB):
-```bash
-cargo run -- gdb               # QEMU listens on port 1234
-```
+MIT License，见 [LICENSE](LICENSE)。
 
-In another terminal, connect GDB:
-```bash
-riscv32-unknown-elf-gdb target/riscv32imac-unknown-none-elf/debug/kernel
-```
+## 参考资源
 
-Inside GDB:
-```gdb
-(gdb) target remote :1234      # Connect to QEMU
-(gdb) break kernel_main        # Set breakpoint
-(gdb) continue                 # Resume execution
-```
-
-### Inspect the Binary
-
-View memory map:
-```bash
-less kernel.map
-```
-
-Disassemble the kernel:
-```bash
-rust-objdump -d target/riscv32imac-unknown-none-elf/debug/kernel
-```
-
-Check section sizes:
-```bash
-rust-size target/riscv32imac-unknown-none-elf/debug/kernel
-```
-
-## Project Structure
-
-```
-rust_riscv/
-├── src/
-│   ├── main.rs          # Kernel entry point, panic handler, macros
-│   ├── startup.rs       # Assembly boot code, linker symbols
-│   └── uart.rs          # 16550A UART driver
-├── linker.ld            # Custom linker script for memory layout
-├── build.rs             # Build script (linker configuration)
-├── qemu-runner.sh       # QEMU launch wrapper
-├── Cargo.toml           # Rust project configuration
-└── .cargo/config.toml   # Cargo build configuration
-```
-
-### Module Overview
-
-**`src/main.rs`**: Kernel entry and utilities
-- `kernel_main()`: Main kernel function called from boot code
-- `kprint!` / `kprintln!`: Macros for formatted UART output
-- `panic()`: Custom panic handler for bare-metal environment
-
-**`src/startup.rs`**: Low-level boot sequence
-- `_start`: Assembly entry point that QEMU jumps to
-- Initializes stack pointer and zeros BSS section
-- Declares linker symbols (`_sbss`, `_ebss`, `_stack_top`, etc.)
-- Helper functions: `bss_range()`, `heap_range()`
-
-**`src/uart.rs`**: Serial communication driver
-- 16550A UART driver (memory-mapped at `0x1000_0000`)
-- Implements `core::fmt::Write` for formatted output
-- All register access uses volatile reads/writes
-
-## Memory Layout
-
-Memory map for QEMU `virt` machine (defined in `linker.ld`):
-
-| Address Range           | Region | Description |
-|------------------------|--------|-------------|
-| `0x0000_0000 - 0x0FFF_FFFF` | MMIO | Memory-mapped I/O (UART at `0x1000_0000`) |
-| `0x8000_0000 - 0x8800_0000` | DRAM | 128 MiB RAM (kernel loaded here) |
-
-Memory sections in RAM (starting at `0x8000_0000`):
-
-1. **`.text`**: Code section, begins with `_start` entry point
-2. **`.rodata`**: Read-only data (string literals, constants)
-3. **`.data`**: Initialized read-write data
-4. **`.bss`**: Zero-initialized data (cleared by boot code)
-5. **`.stack`**: 64 KiB kernel stack
-6. **heap**: Remaining memory after stack (not yet allocated)
-
-## Boot Sequence
-
-1. QEMU loads the ELF binary to `0x8000_0000` and jumps to `_start`
-2. `_start` (assembly in `src/startup.rs`):
-   - Sets up stack pointer (`sp` = `_stack_top`)
-   - Zeros the `.bss` section
-   - Calls `kernel_main()` in Rust (never returns)
-3. `kernel_main()`:
-   - Initializes UART hardware
-   - Prints startup messages via `kprintln!`
-   - Enters infinite `wfi` (Wait For Interrupt) loop
-
-## Development
-
-### Adding Formatted Output
-
-Use the `kprint!` and `kprintln!` macros (similar to `print!` and `println!`):
-
-```rust
-kprintln!("Hello, world!");
-kprint!("Value: {}", 42);
-```
-
-### Adding a Hardware Driver
-
-1. Create a new module in `src/` (e.g., `src/timer.rs`)
-2. Add `mod timer;` to `src/main.rs`
-3. Document MMIO base address and register layout
-4. Use `read_volatile` / `write_volatile` for all hardware access
-5. Expose a safe public API (keep `unsafe` only at MMIO boundary)
-
-### Memory Allocation
-
-Currently, there is no heap allocator. To enable dynamic allocation:
-
-1. Use `heap_range()` from `startup.rs` to get heap bounds
-2. Implement `#[global_allocator]` (e.g., using `linked_list_allocator`)
-3. This unlocks `alloc` crate types: `Vec`, `Box`, `String`, etc.
-
-### Key Conventions
-
-- **No standard library**: All code is `#![no_std]` (use `core::` instead of `std::`)
-- **Volatile MMIO**: All hardware register access must use `read_volatile` / `write_volatile`
-- **Line endings**: Use `\r\n` for UART output (terminal compatibility)
-- **Panic behavior**: Configured to `abort` (no unwinding support)
-- **Size optimization**: Release builds use `opt-level = "z"` and LTO
-
-## Troubleshooting
-
-**Kernel doesn't print anything**
-- Ensure UART is initialized before calling `kprintln!`
-- Verify `Uart::new(UART0_BASE).init()` is called in `kernel_main()`
-
-**Linker errors about undefined symbols**
-- Check that `linker.ld` exists in repository root
-- Ensure `build.rs` exists (tells Cargo to track linker script changes)
-
-**"error: requires `start` lang item"**
-- This is expected in bare-metal environments
-- The `#![no_main]` attribute and custom `_start` provide the entry point
-
-**QEMU exits immediately**
-- Kernel must never return from `kernel_main()`
-- Always end with an infinite loop (usually `wfi` to wait for interrupts)
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Resources
-
-- [RISC-V Specifications](https://riscv.org/technical/specifications/)
-- [QEMU RISC-V Documentation](https://www.qemu.org/docs/master/system/target-riscv.html)
+- [RISC-V 规范](https://riscv.org/technical/specifications/)
+- [QEMU RISC-V 文档](https://www.qemu.org/docs/master/system/target-riscv.html)
 - [Rust Embedded Book](https://rust-embedded.github.io/book/)
-- [16550 UART Datasheet](http://caro.su/msx/ocm_de1/16550.pdf)
+- [16550 UART 数据手册](http://caro.su/msx/ocm_de1/16550.pdf)

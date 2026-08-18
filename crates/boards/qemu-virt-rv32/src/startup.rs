@@ -1,14 +1,20 @@
 //! CPU reset vector and startup code for RISC-V 32-bit.
 //!
-//! This module uses the riscv-common crate's startup template and provides
-//! linker symbol declarations for this board.
-
-// Re-export the startup code from riscv-common (already conditionally exported for rv32/rv64)
-pub use riscv_common::*;
+//! This module provides linker symbol declarations for this board.
+//! The `_start` assembly entry point is defined by the `riscv-common`
+//! crate's startup code.
 
 // ---------------------------------------------------------------------------
 // Linker-script symbol declarations
 // ---------------------------------------------------------------------------
+
+/// Retains the riscv-common object in the final link.
+///
+/// Without a reference, the linker would not extract `riscv-common` from its
+/// archive and would drop the `_start` entry symbol it defines via `global_asm!`.
+/// The linker script sets `ENTRY(_start)`, so this symbol must resolve.
+#[used]
+static _KEEP_RISCV_COMMON: fn() -> (*mut u8, *mut u8) = riscv_common::bss_range;
 
 extern "C" {
     /// Start of text section

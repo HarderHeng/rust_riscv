@@ -3,7 +3,5 @@ channel = "nightly"
 components = ["rust-src", "llvm-tools-preview"]
 targets = [
     "riscv32imac-unknown-none-elf",   # RV32IMAC - QEMU virt, BL808 C906
-    "riscv32emc-unknown-none-elf",    # RV32EMC - BL808 E902 (embedded, no atomics)
-    "riscv32imacf-unknown-none-elf",  # RV32IMACF - BL808 E907 (with float)
     "riscv64imac-unknown-none-elf",   # RV64IMAC - Future 64-bit support
 ]

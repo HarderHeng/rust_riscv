@@ -36,8 +36,8 @@
 pub mod shell;
 pub mod trap;
 
-use hal::{Platform, SerialPort};
-use shell::shell::{Shell, ShellIO, Command};
+use hal::{InterruptController, Platform, SerialPort};
+use shell::shell::{Command, Shell, ShellIO};
 
 /// Platform I/O adapter that implements ShellIO using the Platform trait.
 ///
@@ -107,18 +107,37 @@ pub fn kernel_main<P: Platform>(
     // Initialize console
     platform.console().init();
     platform.console().puts("\r\n");
-    platform.console().puts("=================================\r\n");
+    platform
+        .console()
+        .puts("=================================\r\n");
     platform.console().puts("  Bare-Metal RISC-V Kernel\r\n");
-    platform.console().puts("=================================\r\n");
+    platform
+        .console()
+        .puts("=================================\r\n");
     platform.console().puts("\r\n");
 
     // Initialize trap handling
     trap::init();
-    platform.console().puts("[KERNEL] Trap handler initialized\r\n");
+    platform
+        .console()
+        .puts("[KERNEL] Trap handler initialized\r\n");
 
     // Enable console RX interrupt
     platform.console().enable_rx_interrupt();
-    platform.console().puts("[KERNEL] Console RX interrupt enabled\r\n");
+    platform
+        .console()
+        .puts("[KERNEL] Console RX interrupt enabled\r\n");
+
+    // Route the console IRQ through the interrupt controller so that
+    // entering a character wakes the CPU (the shell sleeps on `wfi`
+    // between `poll()` calls).
+    let ic = platform.interrupt_controller();
+    ic.set_threshold(0);
+    ic.set_priority(platform.console_irq(), 1);
+    ic.enable_irq(platform.console_irq());
+    platform
+        .console()
+        .puts("[KERNEL] Console IRQ enabled in controller\r\n");
 
     // Enable machine external interrupts (MEI) and global interrupts
     trap::enable_external_interrupts();

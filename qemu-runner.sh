@@ -3,6 +3,13 @@
 # cargo run          →  launch QEMU normally
 set -e
 
+if [[ $# -eq 0 ]]; then
+    echo "usage: $0 <kernel-elf> [gdb]" >&2
+    echo "  This script is invoked by cargo as the QEMU runner." >&2
+    echo "  Run 'cargo run -p qemu-virt-rv32 --release' instead." >&2
+    exit 1
+fi
+
 KERNEL="$1"
 shift
 
