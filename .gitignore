@@ -1,5 +1,3 @@
-.cargo
-.claude
 target
 
 # Build artifacts
@@ -14,5 +12,4 @@ Thumbs.db
 *.swp
 *.swo
 *~
-.vscode/
 .idea/

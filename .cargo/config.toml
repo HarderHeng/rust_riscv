@@ -1,0 +1,36 @@
+# Workspace-level Cargo configuration
+
+# Build aliases for different board targets
+[alias]
+qemu = "build --package qemu-virt-rv32"
+qemu-run = "run --package qemu-virt-rv32"
+bl808-e902 = "build --package bl808-e902"
+bl808-e907 = "build --package bl808-e907"
+bl808-c906 = "build --package bl808-c906"
+
+# Default build target (can be overridden per-package)
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+# QEMU virt-rv32 board configuration (RV32IMAC)
+[target.riscv32imac-unknown-none-elf]
+runner = "./qemu-runner.sh"
+rustflags = [
+    "-C", "link-arg=-Map=kernel.map",
+]
+
+# BL808 E902 configuration (RV32EMC - embedded profile, no atomics)
+[target.riscv32emc-unknown-none-elf]
+rustflags = [
+    "-C", "link-arg=-Tcrates/boards/bl808-e902/linker.ld",
+]
+
+# BL808 E907 configuration (RV32IMACF - with float)
+[target.riscv32imacf-unknown-none-elf]
+rustflags = [
+    "-C", "link-arg=-Tcrates/boards/bl808-e907/linker.ld",
+]
+
+# RV64IMAC configuration (future use)
+[target.riscv64imac-unknown-none-elf]
+rustflags = []
