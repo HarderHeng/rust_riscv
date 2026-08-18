@@ -90,9 +90,9 @@ if MTIME >= MTIMECMP {
 
 ### 3.1 基本信息
 - **MMIO基址**: `0x0C00_0000`
-- **大小**: 64 MB (0x0400_0000)
+- **大小**: 6 MB（`0x200000 + 2×CPUS_MAX×0x1000`，覆盖到 `0x0C_5F_FFFF`）
 - **功能**: 管理外部设备中断（如UART、VirtIO）
-- **支持**: 最多127个中断源（IRQ 1-127，IRQ 0保留）
+- **支持**: 96 个中断源（IRQ 1-95，IRQ 0保留）
 
 ### 3.2 寄存器布局
 
@@ -118,14 +118,12 @@ if MTIME >= MTIMECMP {
 | IRQ编号 | 设备 | 说明 |
 |---------|------|------|
 | 0 | 保留 | 无效中断源 |
-| 1 | VirtIO Block | 块设备 |
-| 2 | VirtIO Net | 网络设备 |
-| 3 | VirtIO Console | 控制台 |
-| 4 | VirtIO RNG | 随机数生成器 |
-| 5-8 | VirtIO其他 | 其他VirtIO设备 |
-| 9 | PCIe | PCIe中断 (如果启用) |
+| 1-8 | VirtIO | 块、网络、控制台、RNG 等 8 个设备 |
 | 10 | **UART0** | **串口0（你的项目在用）** |
-| 11+ | 扩展设备 | 其他外设 |
+| 11 | RTC | goldfish-rtc 实时时钟 |
+| 32-35 | PCIe | PCIe INTx（PCIE_IRQ = 0x20） |
+| 36-39 | RISC-V IOMMU | `iommu-sys=on` 时 |
+| 64-95 | Platform Bus | 动态 sysbus 设备 |
 
 ### 3.4 中断处理流程
 
@@ -217,17 +215,19 @@ Bit     说明
 
 ## 5. 完整的内存映射
 
+> 完整的权威内存映射见 [memory-map.md](memory-map.md)。此处仅列与本中断模型相关的区间：
+
 ```
 地址范围                      设备                大小
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-0x0000_0000 - 0x0000_0FFF    Debug ROM           4 KB
-0x0001_0000 - 0x0001_7FFF    Boot ROM            32 KB
+0x0010_0000 - 0x0010_0FFF    VIRT_TEST           4 KB   (0x7777=重启)
+0x0010_1000 - 0x0010_1FFF    RTC                 4 KB
 0x0200_0000 - 0x0200_FFFF    CLINT               64 KB
-0x0C00_0000 - 0x0FFF_FFFF    PLIC                64 MB
+0x0C00_0000 - 0x0C5F_FFFF    PLIC                6 MB
 0x1000_0000 - 0x1000_00FF    UART0 (16550A)      256 B
-0x1000_1000 - 0x1000_8FFF    VirtIO MMIO         32 KB
-0x2000_0000 - 0x3FFF_FFFF    PCIe ECAM           512 MB
-0x3000_0000 - 0x3FFF_FFFF    PCIe MMIO           256 MB
+0x1000_1000 - 0x1000_8FFF    VirtIO MMIO         32 KB  (8 × 4 KB)
+0x3000_0000 - 0x3FFF_FFFF    PCIe ECAM           256 MB
+0x4000_0000 - 0x7FFF_FFFF    PCIe MMIO           1 GB
 0x8000_0000 - 0x87FF_FFFF    DRAM                128 MB (默认)
 ```
 
@@ -489,7 +489,7 @@ fn handle_software_interrupt() {
 3. **中断挂起**: `mip.MTIP/MSIP/MEIP = 1`（硬件设置）
 
 ### 7.3 PLIC注意事项
-- IRQ 0 保留，有效范围 1-127
+- IRQ 0 保留，有效范围 1-95
 - Claim/Complete寄存器操作必须成对
 - Context编号：Hart N M-mode = 2N, S-mode = 2N+1
 - 优先级0表示禁用该中断

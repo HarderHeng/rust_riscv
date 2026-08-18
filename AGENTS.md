@@ -61,6 +61,6 @@ BL808 板当前为占位，构建可能因 `todo!()` 失败；QEMU 板是最新�
 
 - 新增硬件驱动：在对应的 `boards/*/hal_impl/` 下实现 HAL trait，不要直接写裸 MMIO。
 - 新增 Shell 命令：实现 `CommandHandler`，注册到 `COMMANDS` 数组并**保持字母序**（二分查找依赖排序）。
-- 新增内存段 / 修改布局：改对应板的 `linker.ld`，并同步 `docs/spec/memory-map.md`。
+- 新增内存段 / 修改布局：改对应板的 `linker.ld`，并同步 `docs/architecture/memory-map.md`。
 - 所有 crate 开启 `#![deny(missing_docs)]`：公开项必须有文档注释。
 - 本文件与文档结构变更后，同步更新 [docs/README.md](docs/README.md) 索引。

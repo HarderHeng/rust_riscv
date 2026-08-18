@@ -12,10 +12,13 @@ This is the RISC-V 32-bit board support package for QEMU's `virt` machine.
 
 ### Memory Map
 
-- **0x0000_0000 - 0x0FFF_FFFF**: MMIO region
-  - **0x0100_0000**: VIRT_TEST device (reboot/poweroff)
-  - **0x0C00_0000**: PLIC (Platform-Level Interrupt Controller)
-  - **0x1000_0000**: UART0 (16550A)
+> 完整权威映射见 `docs/architecture/memory-map.md`。本板为 RV32、M 模式、MMU 关闭，地址均为物理地址。
+
+- **0x0010_0000**: VIRT_TEST (syscon; write 0x7777 = reboot)
+- **0x0200_0000**: CLINT (software interrupt + timer)
+- **0x0C00_0000**: PLIC (Platform-Level Interrupt Controller)
+- **0x1000_0000**: UART0 (16550A, clock 3.6864 MHz, IRQ 10)
+- **0x3000_0000**: PCIe ECAM | **0x4000_0000**: PCIe MMIO
 - **0x8000_0000 - 0x8800_0000**: RAM (128 MiB)
 
 ### Peripherals
@@ -58,7 +61,7 @@ riscv32-unknown-elf-gdb target/riscv32imac-unknown-none-elf/debug/qemu-virt-rv32
 ├── src/
 │   ├── main.rs              # Entry point, panic handler
 │   ├── platform.rs          # QemuVirtPlatform implementation
-│   ├── startup.rs           # Startup code (re-exports riscv-common)
+│   ├── startup.rs           # Linker symbols + riscv-common _start retainer
 │   └── hal_impl/            # HAL trait implementations
 │       ├── uart_16550a.rs   # SerialPort implementation
 │       ├── plic.rs          # InterruptController implementation
