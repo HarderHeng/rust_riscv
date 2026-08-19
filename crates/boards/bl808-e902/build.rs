@@ -1,5 +1,11 @@
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
 fn main() {
-    // Rerun build if linker script changes
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
     println!("cargo:rerun-if-changed=linker.ld");
-    println!("cargo:rustc-link-arg=-Tlinker.ld");
+    fs::copy("linker.ld", out_dir.join("linker.ld")).unwrap();
+    println!("cargo:rustc-link-arg=-T{}/linker.ld", out_dir.display());
 }

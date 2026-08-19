@@ -39,14 +39,14 @@ SECTIONS {
     } > RAM
 
     /* Mark the end of the read-only image (used if you ever copy .data). */
-    _sidata = .;
+_sidata = ALIGN(., 4096);
 
     /* ------------------------------------------------------------------ */
     /* .data  — initialised read-write data                                */
     /*   LMA = right after .rodata in the flash/RAM image (_sidata)       */
     /*   VMA = same (we are running directly from RAM)                    */
     /* ------------------------------------------------------------------ */
-    .data ALIGN(4) : AT(_sidata) {
+    .data ALIGN(4096) : AT(_sidata) {
         _sdata = .;             /* VMA start — copy destination           */
         *(.data .data.*)
         *(.sdata .sdata.*)      /* RISC-V small-data section              */

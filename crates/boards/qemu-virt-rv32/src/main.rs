@@ -9,10 +9,14 @@
 #![no_std]
 #![no_main]
 
+mod commands;
 mod hal_impl;
 mod platform;
 mod startup;
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
+use hal_impl::{Clint, MTIME_HZ};
 use platform::QemuVirtPlatform;
 
 // ---------------------------------------------------------------------------
@@ -25,15 +29,21 @@ use platform::QemuVirtPlatform;
 /// - QemuVirtPlatform is Sync (can be shared between threads/contexts)
 /// - All hardware access uses volatile operations
 /// - QEMU virt is a single-core machine in this configuration
-static PLATFORM: QemuVirtPlatform = QemuVirtPlatform::new();
+pub(crate) static PLATFORM: QemuVirtPlatform = QemuVirtPlatform::new();
+
+const TICK_HZ: u64 = 100;
+static TICKS: AtomicU32 = AtomicU32::new(0);
+
+fn timer_tick() {
+    TICKS.fetch_add(1, Ordering::Relaxed);
+    Clint::new().set_timeout(0, MTIME_HZ / TICK_HZ);
+}
+
+fn uptime_seconds() -> u64 {
+    TICKS.load(Ordering::Relaxed) as u64 / TICK_HZ
+}
 
 // ---------------------------------------------------------------------------
-// Shell commands (imported from current src/)
-// ---------------------------------------------------------------------------
-
-// Use the platform-independent command set from kernel
-use kernel::shell::commands;
-
 // ---------------------------------------------------------------------------
 // Kernel entry point
 // ---------------------------------------------------------------------------
@@ -51,7 +61,9 @@ extern "C" fn kernel_main() -> ! {
 
     // Early console init for startup messages
     PLATFORM.console().init();
-    PLATFORM.console().puts("\r\n[BOARD] QEMU virt-rv32 initializing...\r\n");
+    PLATFORM
+        .console()
+        .puts("\r\n[BOARD] QEMU virt-rv32 initializing...\r\n");
 
     // Register PLIC claim/complete handlers with the trap system
     kernel::trap::register_claim_handler(|| {
@@ -62,6 +74,11 @@ extern "C" fn kernel_main() -> ! {
     kernel::trap::register_complete_handler(|irq| {
         PLATFORM.interrupt_controller().complete(irq);
     });
+
+    kernel::trap::register_timer_handler(timer_tick);
+    kernel::time::register_uptime_source(uptime_seconds);
+    Clint::new().set_timeout(0, MTIME_HZ / TICK_HZ);
+    kernel::trap::enable_timer_interrupt();
 
     // Hand off to kernel
     kernel::kernel_main(&PLATFORM, commands::COMMANDS, "riscv32> ")

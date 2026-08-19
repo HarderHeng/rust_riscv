@@ -4,7 +4,7 @@
 
 This crate provides bare-metal support for the **BL808 C906 core** - the high-performance 64-bit RISC-V processor on the Bouffalo Lab BL808 SoC, designed primarily for running Linux but capable of bare-metal execution.
 
-**Status**: PLACEHOLDER - Awaiting hardware specifications
+**Status**: PARTIAL - UART/PLIC mappings implemented from Bouffalo SDK; boot/linker/cache integration remains
 
 **Target**: `riscv64imac-unknown-none-elf`
 - **I**: Integer base instruction set (64-bit)
@@ -20,6 +20,16 @@ This crate provides bare-metal support for the **BL808 C906 core** - the high-pe
 - **Memory**: Large DRAM (often 16MB+), no TCM
 - **Cache**: I-cache and D-cache (sizes TBD)
 - **Typical Use Cases**: Linux, embedded applications, multimedia processing
+
+## SDK-Derived Hardware Facts
+
+- D0 RAM: `0x3EF8_0000..0x3F08_8000` (512 KiB DRAM + 32 KiB VRAM)
+- UART3: `0x3000_2000`, IRQ `20`, GPIO16/17 with SDK GPIO function 21
+- UART: Bouffalo FIFO UART, DSP XCLK-based 2,000,000 baud 8N1
+- C906 PLIC: `0xE000_0000`; M-mode enable `+0x2000`, threshold `+0x200000`, claim/complete `+0x200004`
+
+The remaining platform work is the SDK image header/XIP linker integration,
+cache/MMU startup and a C906-compatible trap/vector path.
 
 ## What's Needed
 
@@ -84,11 +94,11 @@ To complete this board support package, we need:
 |-----------|--------|-------|
 | Cargo.toml | ✅ Done | Dependencies on kernel, hal, riscv-common |
 | .cargo/config.toml | ✅ Done | Target: riscv64imac-unknown-none-elf |
-| linker.ld | ⚠️ Template | PLACEHOLDER memory addresses |
+| linker.ld | ✅ Partial | SDK memory regions are ported; image header/XIP boot wrapper remains |
 | src/main.rs | ✅ Done | Entry point with todo!() placeholders |
-| src/hal_impl/uart_bl808.rs | ⚠️ Stub | todo!() - need UART specs |
-| src/hal_impl/interrupt.rs | ⚠️ Stub | todo!() - need PLIC specs |
-| src/hal_impl/platform.rs | ⚠️ Stub | Placeholder values |
+| src/hal_impl/uart_bl808.rs | ✅ Partial | SDK-derived FIFO, clock, GPIO and RX interrupt access |
+| src/hal_impl/interrupt.rs | ✅ Partial | SDK-derived C906 PLIC register access |
+| src/hal_impl/platform.rs | ✅ Partial | SDK-derived UART3 base, IRQ and GPIO mapping |
 | openocd-runner.sh | ⚠️ Placeholder | Need OpenOCD config for T-Head core |
 
 ## Building
@@ -98,7 +108,8 @@ cd crates/boards/bl808-c906
 cargo build
 ```
 
-**Note**: Build will fail with `todo!()` panics until hardware specifications are provided.
+**Note**: Workspace checking passes. Hardware execution still requires the
+BL808 image header, boot flow, linker and cache/MMU integration.
 
 ## T-Head C906 Core Notes
 
@@ -153,7 +164,7 @@ Key differences from the 32-bit E902/E907 cores:
 ## Related Boards
 
 - **bl808-e902**: Low-power M0 core (riscv32emc) for auxiliary tasks
-- **bl808-e907**: Application core (riscv32imacf) with hardware FPU
+- **bl808-e907**: Application core (riscv32imafc) with hardware FPU
 
 ## Multi-Core Communication
 

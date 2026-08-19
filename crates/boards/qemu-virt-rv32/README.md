@@ -41,6 +41,15 @@ cargo run           # Run in QEMU
 cargo run --release # Run optimized build
 ```
 
+To use the optional virtio-console backend instead of UART0:
+
+```bash
+cargo run -p qemu-virt-rv32 --release --features virtio-console -- virtio
+```
+
+The runner adds a virtio-serial device, connects port 0 to the terminal, and
+forces modern virtio-mmio. The default build remains on the UART0 backend.
+
 ## Debugging
 
 ```bash
@@ -62,9 +71,12 @@ riscv32-unknown-elf-gdb target/riscv32imac-unknown-none-elf/debug/qemu-virt-rv32
 │   ├── main.rs              # Entry point, panic handler
 │   ├── platform.rs          # QemuVirtPlatform implementation
 │   ├── startup.rs           # Linker symbols + riscv-common _start retainer
+│   ├── commands.rs          # QEMU-specific shell commands
 │   └── hal_impl/            # HAL trait implementations
 │       ├── uart_16550a.rs   # SerialPort implementation
 │       ├── plic.rs          # InterruptController implementation
+│       ├── clint.rs         # Machine timer implementation
+│       ├── virtio_console.rs # Optional virtio-console implementation
 │       └── mod.rs
 ├── linker.ld                # Linker script for memory layout
 ├── build.rs                 # Build script

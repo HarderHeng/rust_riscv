@@ -51,6 +51,7 @@ pub struct Uart16550a {
 
 impl Uart16550a {
     /// Creates a handle for the UART mapped at `base`.
+    #[allow(dead_code)]
     pub const fn new(base: usize) -> Self {
         Self { base }
     }

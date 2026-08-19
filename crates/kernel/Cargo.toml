@@ -8,7 +8,7 @@ edition = "2021"
 hal = { path = "../hal" }
 
 # Spinlock for interrupt-safe synchronization
-spin = "0.9"
+spin = { version = "0.9", features = ["portable_atomic"] }
 
 # Fixed-size collections (no allocator needed)
 heapless = "0.8"

@@ -1,8 +1,13 @@
-//! BL808 E902 platform definition (placeholder).
+//! BL808 E902 platform definition.
 
 use hal::{MemoryLayout, Platform};
 
 use super::{interrupt::Bl808InterruptController, uart_bl808::Bl808Uart};
+
+/// BL808 UART0 base address from the Bouffalo SDK.
+pub const UART0_BASE: usize = 0x2000_A000;
+/// BL808 E902 UART0 interrupt number from the SDK's M0 vector table.
+pub const UART0_IRQ: u32 = 44;
 
 /// Platform implementation for the BL808 E902 (riscv32emc, M0 low-power core).
 pub struct Bl808E902Platform {
@@ -14,8 +19,7 @@ impl Bl808E902Platform {
     /// Creates a new E902 platform instance.
     pub const fn new() -> Self {
         Self {
-            // TODO: Replace with actual UART base address
-            uart: Bl808Uart::new(0x0000_0000),
+            uart: Bl808Uart::new_mcu(UART0_BASE, 16, 14, 2, 15, 3),
             interrupt_controller: Bl808InterruptController::new(),
         }
     }
@@ -34,8 +38,7 @@ impl Platform for Bl808E902Platform {
     }
 
     fn console_irq(&self) -> u32 {
-        // TODO: Determine actual UART IRQ number
-        0
+        UART0_IRQ
     }
 
     fn name(&self) -> &'static str {

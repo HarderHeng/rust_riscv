@@ -3,6 +3,10 @@ name = "qemu-virt-rv32"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+virtio-console = ["dep:spin"]
+
 [dependencies]
 # Platform-agnostic kernel
 kernel = { path = "../../kernel" }
@@ -12,3 +16,4 @@ hal = { path = "../../hal" }
 
 # RISC-V common utilities (startup code, CSR access)
 riscv-common = { path = "../../riscv-common" }
+spin = { workspace = true, optional = true }

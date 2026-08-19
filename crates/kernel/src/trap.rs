@@ -247,6 +247,7 @@ pub struct TrapFrame {
 // Assembly trap entry point
 // ---------------------------------------------------------------------------
 
+#[cfg(all(target_arch = "riscv32", not(target_feature = "e")))]
 core::arch::global_asm!(
     ".align 4",
     ".global trap_handler",
@@ -344,16 +345,6 @@ fn read_mcause() -> usize {
     cause
 }
 
-/// Machine trap value register (faulting address or other info).
-#[inline]
-fn read_mtval() -> usize {
-    let val: usize;
-    unsafe {
-        core::arch::asm!("csrr {}, mtval", out(reg) val);
-    }
-    val
-}
-
 /// Checks if the trap was an interrupt (vs. exception).
 #[inline]
 fn is_interrupt(mcause: usize) -> bool {
@@ -366,6 +357,55 @@ fn cause_code(mcause: usize) -> usize {
     mcause & 0x7FFF_FFFF
 }
 
+/// Dispatches a trap using the current `mcause` value.
+///
+/// Board-specific trap entries use this when they provide their own register
+/// save/restore assembly (for example the BL808 C906 RV64 entry).
+#[no_mangle]
+pub extern "C" fn dispatch_current_trap() {
+    let mcause = read_mcause();
+
+    if is_interrupt(mcause) {
+        match cause_code(mcause) {
+            3 => handle_software_interrupt(),
+            7 => handle_timer_interrupt(),
+            11 => handle_external_interrupt(),
+            _ => loop {
+                unsafe { core::arch::asm!("wfi") };
+            },
+        }
+    } else {
+        loop {
+            unsafe { core::arch::asm!("wfi") };
+        }
+    }
+}
+
+/// Dispatches an interrupt delivered directly by a CLIC vector entry.
+///
+/// CLIC external interrupts carry the device IRQ number in the vector cause;
+/// unlike PLIC they do not require claim/complete MMIO operations.
+#[no_mangle]
+pub extern "C" fn dispatch_clic_irq(irq: usize) {
+    match irq {
+        3 => handle_software_interrupt(),
+        7 => handle_timer_interrupt(),
+        _ => dispatch_registered_irq(irq as u32),
+    }
+}
+
+fn dispatch_registered_irq(irq: u32) {
+    if irq == 0 || irq >= MAX_IRQ_HANDLERS as u32 {
+        return;
+    }
+
+    let handlers = IRQ_HANDLERS.lock();
+    if let Some(handler) = handlers[irq as usize] {
+        drop(handlers);
+        handler(irq);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Rust trap dispatcher
 // ---------------------------------------------------------------------------
@@ -376,28 +416,7 @@ fn cause_code(mcause: usize) -> usize {
 /// Dispatches to specific handlers based on mcause.
 #[no_mangle]
 extern "C" fn trap_handler_rust(_frame: &mut TrapFrame) {
-    let mcause = read_mcause();
-
-    if is_interrupt(mcause) {
-        match cause_code(mcause) {
-            3 => handle_software_interrupt(),
-            7 => handle_timer_interrupt(),
-            11 => handle_external_interrupt(),
-            _ => {
-                // Unknown interrupt - halt system
-                loop {
-                    unsafe { core::arch::asm!("wfi") };
-                }
-            }
-        }
-    } else {
-        // Exception (synchronous trap) - halt system
-        let _code = cause_code(mcause);
-        let _mtval = read_mtval();
-        loop {
-            unsafe { core::arch::asm!("wfi") };
-        }
-    }
+    dispatch_current_trap();
 }
 
 // ---------------------------------------------------------------------------
@@ -442,13 +461,7 @@ fn handle_external_interrupt() {
     }
 
     // Call registered handler if available
-    let handlers = IRQ_HANDLERS.lock();
-    if let Some(handler) = handlers[irq as usize] {
-        // Release lock before calling handler to prevent deadlock
-        drop(handlers);
-        handler(irq);
-    }
-    // If no handler is registered, just continue
+    dispatch_registered_irq(irq);
 
     // Signal completion to the platform
     let complete_fn = COMPLETE_HANDLER.lock();
@@ -479,6 +492,15 @@ pub fn enable_external_interrupts() {
     unsafe {
         // Set MEIE bit (bit 11) in mie register
         let mask: usize = 1 << 11;  // 0x800
+        core::arch::asm!("csrs mie, {}", in(reg) mask);
+    }
+}
+
+/// Enables machine timer interrupts (MTI, `mie.MTIE`).
+pub fn enable_timer_interrupt() {
+    unsafe {
+        // Set MTIE bit (bit 7) in mie register.
+        let mask: usize = 1 << 7;
         core::arch::asm!("csrs mie, {}", in(reg) mask);
     }
 }

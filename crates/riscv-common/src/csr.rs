@@ -213,6 +213,7 @@ pub mod mcause {
     #[cfg(target_arch = "riscv32")]
     pub const INTERRUPT_BIT: usize = 1 << 31;
 
+    /// Interrupt bit for RV64 (high bit set indicates an interrupt).
     #[cfg(target_arch = "riscv64")]
     pub const INTERRUPT_BIT: usize = 1 << 63;
 
@@ -279,4 +280,3 @@ pub fn get_trap_vector() -> (usize, bool) {
     let vectored = (mtvec & 0b11) == 0b01;
     (addr, vectored)
 }
-

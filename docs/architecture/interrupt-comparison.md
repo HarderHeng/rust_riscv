@@ -246,6 +246,28 @@ handle_mei:
 
 ---
 
+## BL808 SDK 实际映射
+
+BL808 不能直接套用 QEMU virt 的 PLIC 流程。Bouffalo SDK 给出的核心映射是：
+
+| 核心 | SDK CPU 宏 | UART 控制器 / IRQ | 中断控制器 |
+|---|---|---|---|
+| E902 | `CPU_M0` | UART0 `0x2000_A000` / IRQ 44 | T-Head CLIC `0xE080_0000` |
+| E907 | `CPU_LP` | UART1 `0x2000_A100` / IRQ 45 | T-Head CLIC `0xE080_0000` |
+| C906 | `CPU_D0` | UART3 `0x3000_2000` / IRQ 20 | SDK PLIC `0xE000_0000` |
+
+E902/E907 的 CLIC 直接把外部 IRQ 映射到向量入口，没有 QEMU PLIC 的
+Claim/Complete；C906 才使用 PLIC 的 Hart 0 M-mode Enable/Threshold/Claim
+寄存器。当前 Rust `kernel::trap` 汇编入口仍是 QEMU RV32 Direct+PLIC 模型，
+因此 BL808 的 UART 驱动和寄存器层已接入，但 BL808 的核心专用 vector/trap
+入口仍需单独移植 SDK 的 `startup/*/vector.S`。
+
+SDK 参考：`drivers/lhal/config/bl808/bl808_irq.h`、
+`drivers/lhal/include/arch/risc-v/t-head/Core/Include/core_rv32.h`、
+`core_rv64.h`。
+
+---
+
 ## 总结
 
 | 特性 | ARM Cortex-M | RISC-V (Direct) | RISC-V (Vectored) |

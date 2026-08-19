@@ -1,77 +1,58 @@
-/* BL808 E907 (riscv32imacf) Linker Script - TEMPLATE */
-/*
- * TODO: This is a PLACEHOLDER memory map!
- *
- * Required Information:
- * 1. ITCM (Instruction Tightly-Coupled Memory) base address and size
- * 2. DTCM (Data Tightly-Coupled Memory) base address and size
- * 3. RAM base address and size
- * 4. MMIO peripheral base addresses (UART, GPIO, timers, etc.)
- * 5. Shared memory regions with E902 and C906 cores
- *
- * Resources needed:
- * - BL808 datasheet
- * - E907 core technical reference manual
- * - Bouffalo Lab SDK linker scripts
- */
+/* BL808 E907 linker layout derived from SDK bl808_flash_lp.ld. */
 
-MEMORY
-{
-    /* TODO: Replace with actual memory map */
-    ITCM (rx)  : ORIGIN = 0x22020000, LENGTH = 64K   /* Instruction TCM - VERIFY! */
-    DTCM (rw)  : ORIGIN = 0x22030000, LENGTH = 32K   /* Data TCM - VERIFY! */
-    RAM (rwx)  : ORIGIN = 0x62040000, LENGTH = 128K  /* Main RAM - VERIFY! */
-    /* MMIO regions not defined yet - need peripheral addresses */
-}
-
-/* Entry point */
+OUTPUT_ARCH(riscv)
 ENTRY(_start)
 
-SECTIONS
-{
-    /* Code section in ITCM for fast execution */
+/* The SDK image header/boot ROM wrapper is not part of this ELF yet. */
+MEMORY {
+    XIP  (rx)  : ORIGIN = 0x58020000, LENGTH = 1M
+    ITCM (rx)  : ORIGIN = 0x2202C000, LENGTH = 16K
+    DTCM (rwx) : ORIGIN = 0x22030000, LENGTH = 16K
+    RAM  (rwx) : ORIGIN = 0x22034000, LENGTH = 16K
+    XRAM (rwx) : ORIGIN = 0x40000000, LENGTH = 16K
+}
+
+SECTIONS {
     .text : {
-        *(.text.start)    /* _start entry point */
+        _stext = .;
+        KEEP(*(.text.start))
         *(.text .text.*)
-    } > ITCM
+        _etext = .;
+    } > XIP
 
-    /* Read-only data can go in ITCM or RAM */
-    .rodata : {
+    .rodata ALIGN(8) : {
         *(.rodata .rodata.*)
-    } > ITCM
+        *(.srodata .srodata.*)
+    } > XIP
 
-    /* Initialized data in DTCM */
-    .data : {
+    _sidata = ALIGN(., 4);
+    .data ORIGIN(RAM) : AT(_sidata) {
+        . = ALIGN(4);
         _sdata = .;
         *(.data .data.*)
-        _edata = .;
-    } > DTCM
+        *(.sdata .sdata.*)
+        _edata = ALIGN(4);
+    } > RAM
 
-    /* Zero-initialized data in DTCM */
-    .bss : {
+    .bss ALIGN(4) (NOLOAD) : {
         _sbss = .;
         *(.bss .bss.*)
+        *(.sbss .sbss.*)
         *(COMMON)
-        _ebss = .;
-    } > DTCM
+        _ebss = ALIGN(4);
+    } > RAM
 
-    /* Stack in DTCM (grows downward) */
-    .stack (NOLOAD) : {
+    .stack ORIGIN(DTCM) (NOLOAD) : {
         _stack_bottom = .;
-        . = . + 16K;  /* 16K stack - larger than E902 */
+        . += 0x400;
         _stack_top = .;
     } > DTCM
 
-    /* Heap in main RAM if needed */
-    .heap (NOLOAD) : {
-        _heap_start = .;
-        . = ORIGIN(RAM) + LENGTH(RAM);
-        _heap_end = .;
-    } > RAM
+    _heap_start = ALIGN(ADDR(.bss) + SIZEOF(.bss), 4);
+    _heap_end = ORIGIN(RAM) + LENGTH(RAM);
 
-    /* Discard unwanted sections */
     /DISCARD/ : {
-        *(.eh_frame)
+        *(.eh_frame .eh_frame_hdr)
         *(.comment)
     }
 }

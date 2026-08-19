@@ -1,10 +1,15 @@
-//! BL808 E907 platform definition (placeholder).
+//! BL808 E907 platform definition.
 
 use hal::{MemoryLayout, Platform};
 
 use super::{interrupt::Bl808InterruptController, uart_bl808::Bl808Uart};
 
-/// Platform implementation for the BL808 E907 (riscv32imacf, M4F application core).
+/// BL808 UART1 base address from the Bouffalo SDK.
+pub const UART1_BASE: usize = 0x2000_A100;
+/// BL808 E907 UART1 interrupt number from the SDK's LP vector table.
+pub const UART1_IRQ: u32 = 45;
+
+/// Platform implementation for the BL808 E907 (riscv32imafc, M4F application core).
 pub struct Bl808E907Platform {
     uart: Bl808Uart,
     interrupt_controller: Bl808InterruptController,
@@ -14,8 +19,7 @@ impl Bl808E907Platform {
     /// Creates a new E907 platform instance.
     pub const fn new() -> Self {
         Self {
-            // TODO: Replace with actual UART base address
-            uart: Bl808Uart::new(0x0000_0000),
+            uart: Bl808Uart::new_mcu(UART1_BASE, 17, 18, 6, 19, 7),
             interrupt_controller: Bl808InterruptController::new(),
         }
     }
@@ -34,16 +38,15 @@ impl Platform for Bl808E907Platform {
     }
 
     fn console_irq(&self) -> u32 {
-        // TODO: Determine actual UART IRQ number
-        0
+        UART1_IRQ
     }
 
     fn name(&self) -> &'static str {
-        "BL808 E907 (riscv32imacf)"
+        "BL808 E907 (riscv32imafc)"
     }
 
     fn arch(&self) -> &'static str {
-        "riscv32imacf"
+        "riscv32imafc"
     }
 
     fn reboot(&self) -> ! {

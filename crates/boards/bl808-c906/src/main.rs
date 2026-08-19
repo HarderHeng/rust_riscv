@@ -2,16 +2,11 @@
 #![no_main]
 
 mod hal_impl;
+mod startup;
 
 use core::panic::PanicInfo;
-use hal::{Platform, SerialPort};
+use hal::{InterruptController, Platform, SerialPort};
 use hal_impl::Bl808C906Platform;
-
-/// Keeps the riscv-common startup object in the final link (`_start`).
-///
-/// The linker script sets `ENTRY(_start)`, so this symbol must resolve.
-#[used]
-static _KEEP_RISCV_COMMON: fn() -> (*mut u8, *mut u8) = riscv_common::bss_range;
 
 /// Global platform instance.
 static PLATFORM: Bl808C906Platform = Bl808C906Platform::new();
@@ -25,15 +20,27 @@ pub extern "C" fn kernel_main() -> ! {
         .puts("BL808 C906 (riscv64imac) - High-Performance 64-bit Core\r\n");
     PLATFORM
         .console()
-        .puts("Platform: PLACEHOLDER - Awaiting memory map and peripheral definitions\r\n");
+        .puts("Platform: SDK-derived UART mapping; boot/linker integration pending\r\n");
     PLATFORM
         .console()
         .puts("Note: This core typically runs Linux, but can run bare-metal kernels\r\n");
 
-    // Never returns (redline: kernel_main must end in an infinite loop)
-    loop {
-        unsafe { core::arch::asm!("wfi") }
-    }
+    kernel::trap::register_claim_handler(|| PLATFORM.interrupt_controller().claim().unwrap_or(0));
+    kernel::trap::register_complete_handler(|irq| {
+        PLATFORM.interrupt_controller().complete(irq);
+    });
+
+    let controller = PLATFORM.interrupt_controller();
+    controller.set_threshold(0);
+    controller.set_priority(PLATFORM.console_irq(), 1);
+    controller.enable_irq(PLATFORM.console_irq());
+    PLATFORM.console().enable_rx_interrupt();
+    kernel::trap::enable_external_interrupts();
+    kernel::trap::enable_global_interrupts();
+
+    let io = kernel::PlatformIO::new(&PLATFORM);
+    let mut shell = kernel::shell::Shell::new(io, kernel::shell::commands::COMMANDS, "c906> ");
+    shell.run()
 }
 
 /// Placeholder panic handler that halts the core.

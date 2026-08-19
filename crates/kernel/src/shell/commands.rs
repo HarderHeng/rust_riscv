@@ -6,11 +6,32 @@
 
 use crate::shell::shell::{Command, CommandHandler, ShellIO};
 
+fn write_u64(io: &mut dyn ShellIO, mut value: u64) {
+    if value == 0 {
+        io.write_byte(b'0');
+        return;
+    }
+
+    let mut digits = [0u8; 20];
+    let mut len = 0;
+    while value != 0 {
+        digits[len] = b'0' + (value % 10) as u8;
+        value /= 10;
+        len += 1;
+    }
+
+    while len != 0 {
+        len -= 1;
+        io.write_byte(digits[len]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // help - Display available commands or help for a specific command
 // ---------------------------------------------------------------------------
 
-struct HelpCommand;
+/// Built-in help command implementation.
+pub struct HelpCommand;
 
 impl CommandHandler for HelpCommand {
     fn execute(&self, args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
@@ -64,13 +85,15 @@ impl CommandHandler for HelpCommand {
     }
 }
 
-static HELP_CMD: HelpCommand = HelpCommand;
+/// Built-in `help` command handler.
+pub static HELP_CMD: HelpCommand = HelpCommand;
 
 // ---------------------------------------------------------------------------
 // echo - Echo arguments to output
 // ---------------------------------------------------------------------------
 
-struct EchoCommand;
+/// Built-in echo command implementation.
+pub struct EchoCommand;
 
 impl CommandHandler for EchoCommand {
     fn execute(&self, args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
@@ -89,13 +112,15 @@ impl CommandHandler for EchoCommand {
     }
 }
 
-static ECHO_CMD: EchoCommand = EchoCommand;
+/// Built-in `echo` command handler.
+pub static ECHO_CMD: EchoCommand = EchoCommand;
 
 // ---------------------------------------------------------------------------
 // clear - Clear the screen
 // ---------------------------------------------------------------------------
 
-struct ClearCommand;
+/// Built-in clear command implementation.
+pub struct ClearCommand;
 
 impl CommandHandler for ClearCommand {
     fn execute(&self, _args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
@@ -111,13 +136,15 @@ impl CommandHandler for ClearCommand {
     }
 }
 
-static CLEAR_CMD: ClearCommand = ClearCommand;
+/// Built-in `clear` command handler.
+pub static CLEAR_CMD: ClearCommand = ClearCommand;
 
 // ---------------------------------------------------------------------------
 // version - Display kernel version
 // ---------------------------------------------------------------------------
 
-struct VersionCommand;
+/// Built-in version command implementation.
+pub struct VersionCommand;
 
 impl CommandHandler for VersionCommand {
     fn execute(&self, _args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
@@ -134,17 +161,25 @@ impl CommandHandler for VersionCommand {
     }
 }
 
-static VERSION_CMD: VersionCommand = VersionCommand;
+/// Built-in `version` command handler.
+pub static VERSION_CMD: VersionCommand = VersionCommand;
 
 // ---------------------------------------------------------------------------
 // uptime - Display system uptime (placeholder)
 // ---------------------------------------------------------------------------
 
-struct UptimeCommand;
+/// Built-in uptime command implementation.
+pub struct UptimeCommand;
 
 impl CommandHandler for UptimeCommand {
     fn execute(&self, _args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
-        io.write_str("Uptime: (timer not implemented yet)\r\n");
+        if let Some(seconds) = crate::time::uptime_seconds() {
+            io.write_str("Uptime: ");
+            write_u64(io, seconds);
+            io.write_str(" seconds\r\n");
+        } else {
+            io.write_str("Uptime: (timer not implemented yet)\r\n");
+        }
         Ok(())
     }
 
@@ -153,13 +188,15 @@ impl CommandHandler for UptimeCommand {
     }
 }
 
-static UPTIME_CMD: UptimeCommand = UptimeCommand;
+/// Built-in `uptime` command handler.
+pub static UPTIME_CMD: UptimeCommand = UptimeCommand;
 
 // ---------------------------------------------------------------------------
 // panic - Trigger a kernel panic (for testing)
 // ---------------------------------------------------------------------------
 
-struct PanicCommand;
+/// Built-in panic command implementation.
+pub struct PanicCommand;
 
 impl CommandHandler for PanicCommand {
     fn execute(&self, _args: &[&str], _io: &mut dyn ShellIO) -> Result<(), &'static str> {
@@ -171,7 +208,8 @@ impl CommandHandler for PanicCommand {
     }
 }
 
-static PANIC_CMD: PanicCommand = PanicCommand;
+/// Built-in `panic` command handler.
+pub static PANIC_CMD: PanicCommand = PanicCommand;
 
 // ---------------------------------------------------------------------------
 // Command Registry

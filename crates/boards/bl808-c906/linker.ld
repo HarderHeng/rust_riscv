@@ -1,76 +1,58 @@
-/* BL808 C906 (riscv64imac) Linker Script - TEMPLATE */
-/*
- * TODO: This is a PLACEHOLDER memory map!
- *
- * Required Information:
- * 1. Main memory base address and size (typically larger than E902/E907)
- * 2. Cache configuration (I-cache, D-cache sizes and settings)
- * 3. MMIO peripheral base addresses (UART, GPIO, timers, etc.)
- * 4. Shared memory regions with E902 and E907 cores
- * 5. Boot sequence (OpenSBI/M-mode vs S-mode entry)
- *
- * Resources needed:
- * - BL808 datasheet
- * - C906 core technical reference manual (T-Head/Alibaba)
- * - Bouffalo Lab SDK linker scripts
- */
+/* BL808 C906/D0 linker layout derived from SDK bl808_flash_d0.ld. */
 
-MEMORY
-{
-    /* TODO: Replace with actual memory map */
-    /* C906 typically has more memory and no separate TCM */
-    RAM (rwx)  : ORIGIN = 0x50000000, LENGTH = 16M   /* Main RAM - VERIFY! */
-    /* MMIO regions not defined yet - need peripheral addresses */
-}
-
-/* Entry point */
+OUTPUT_ARCH(riscv)
 ENTRY(_start)
 
-SECTIONS
-{
-    /* Code section */
+/* The SDK image header/boot ROM wrapper is not part of this ELF yet. */
+MEMORY {
+    XIP  (rx)  : ORIGIN = 0x58000000, LENGTH = 32M
+    ITCM (rx)  : ORIGIN = 0x3EFF0000, LENGTH = 28K
+    DTCM (rwx) : ORIGIN = 0x3EFF7000, LENGTH = 4K
+    RAM  (rwx) : ORIGIN = 0x3EFF8000, LENGTH = 64K
+    XRAM (rwx) : ORIGIN = 0x40004000, LENGTH = 16K
+}
+
+SECTIONS {
     .text : {
-        *(.text.start)    /* _start entry point */
+        _stext = .;
+        KEEP(*(.text.start))
         *(.text .text.*)
-    } > RAM
+        _etext = .;
+    } > XIP
 
-    /* Read-only data */
-    .rodata : {
+    .rodata ALIGN(8) : {
         *(.rodata .rodata.*)
-    } > RAM
+        *(.srodata .srodata.*)
+    } > XIP
 
-    /* Initialized data */
-    .data : {
+    _sidata = ALIGN(., 8);
+    .data ORIGIN(RAM) : AT(_sidata) {
+        . = ALIGN(8);
         _sdata = .;
         *(.data .data.*)
-        _edata = .;
+        *(.sdata .sdata.*)
+        _edata = ALIGN(8);
     } > RAM
 
-    /* Zero-initialized data */
-    .bss : {
+    .bss ALIGN(8) (NOLOAD) : {
         _sbss = .;
         *(.bss .bss.*)
+        *(.sbss .sbss.*)
         *(COMMON)
-        _ebss = .;
+        _ebss = ALIGN(8);
     } > RAM
 
-    /* Stack (grows downward) */
-    .stack (NOLOAD) : {
+    .stack ORIGIN(DTCM) (NOLOAD) : {
         _stack_bottom = .;
-        . = . + 64K;  /* 64K stack - larger for 64-bit architecture */
+        . += 0x400;
         _stack_top = .;
-    } > RAM
+    } > DTCM
 
-    /* Heap */
-    .heap (NOLOAD) : {
-        _heap_start = .;
-        . = ORIGIN(RAM) + LENGTH(RAM);
-        _heap_end = .;
-    } > RAM
+    _heap_start = ALIGN(ADDR(.bss) + SIZEOF(.bss), 8);
+    _heap_end = ORIGIN(RAM) + LENGTH(RAM);
 
-    /* Discard unwanted sections */
     /DISCARD/ : {
-        *(.eh_frame)
+        *(.eh_frame .eh_frame_hdr)
         *(.comment)
     }
 }

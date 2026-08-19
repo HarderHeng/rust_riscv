@@ -34,6 +34,7 @@
 #![deny(missing_docs)]
 
 pub mod shell;
+pub mod time;
 pub mod trap;
 
 use hal::{InterruptController, Platform, SerialPort};

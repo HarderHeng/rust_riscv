@@ -4,7 +4,7 @@
 
 This crate provides bare-metal support for the **BL808 E902 core** - the low-power M0 RISC-V processor on the Bouffalo Lab BL808 SoC.
 
-**Status**: PLACEHOLDER - Awaiting hardware specifications
+**Status**: PARTIAL - UART/CLIC mappings implemented from Bouffalo SDK; boot/linker integration remains
 
 **Target**: `riscv32emc-unknown-none-elf`
 - **E**: Reduced register set (16 registers instead of 32)
@@ -17,6 +17,16 @@ This crate provides bare-metal support for the **BL808 E902 core** - the low-pow
 - **Purpose**: Low-power M0 core for auxiliary tasks
 - **Memory**: ITCM (Instruction TCM) + DTCM (Data TCM) + shared RAM
 - **Typical Use Cases**: Low-power sensor processing, wake-on-interrupt tasks
+
+## SDK-Derived Hardware Facts
+
+- MCU RAM: `0x2202_0000..0x2205_8000` (OCRAM + WRAM, 224 KiB)
+- UART0: `0x2000_A000`, IRQ `44`, GPIO14 TX / GPIO15 RX
+- UART: Bouffalo FIFO UART (not 16550A), XCLK-based 2,000,000 baud 8N1
+- CLIC: `0xE080_0000`; SDK M0 external IRQ entries use 16-79
+
+The remaining platform work is the SDK image header/XIP linker integration,
+clock/TCM startup and a CLIC-compatible trap/vector path.
 
 ## What's Needed
 
@@ -69,21 +79,22 @@ To complete this board support package, we need:
 |-----------|--------|-------|
 | Cargo.toml | ✅ Done | Dependencies on kernel, hal, riscv-common |
 | .cargo/config.toml | ✅ Done | Target: riscv32emc-unknown-none-elf |
-| linker.ld | ⚠️ Template | PLACEHOLDER memory addresses |
+| linker.ld | ✅ Partial | SDK memory regions are ported; image header/XIP boot wrapper remains |
 | src/main.rs | ✅ Done | Entry point with todo!() placeholders |
-| src/hal_impl/uart_bl808.rs | ⚠️ Stub | todo!() - need UART specs |
-| src/hal_impl/interrupt.rs | ⚠️ Stub | todo!() - need PLIC specs |
-| src/hal_impl/platform.rs | ⚠️ Stub | Placeholder values |
+| src/hal_impl/uart_bl808.rs | ✅ Partial | SDK-derived FIFO, clock, GPIO and RX interrupt access |
+| src/hal_impl/interrupt.rs | ✅ Partial | SDK-derived CLIC register access |
+| src/hal_impl/platform.rs | ✅ Partial | SDK-derived UART0 base, IRQ and GPIO mapping |
 | openocd-runner.sh | ⚠️ Placeholder | Need OpenOCD config |
 
 ## Building
 
 ```bash
 cd crates/boards/bl808-e902
-cargo build
+cargo build -Z build-std=core
 ```
 
-**Note**: Build will fail with `todo!()` panics until hardware specifications are provided.
+**Note**: Workspace checking passes. Hardware execution still requires the
+BL808 image header, boot flow and linker integration.
 
 ## Resources Needed
 
@@ -105,5 +116,5 @@ cargo build
 
 ## Related Boards
 
-- **bl808-e907**: Application core (riscv32imacf) with FPU
+- **bl808-e907**: Application core (riscv32imafc) with FPU
 - **bl808-c906**: High-performance core (riscv64imac) for Linux

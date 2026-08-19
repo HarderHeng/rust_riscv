@@ -12,7 +12,7 @@ members = [
 
 [workspace.dependencies]
 # Shared dependencies across all workspace members
-spin = "0.9"
+spin = { version = "0.9", features = ["portable_atomic"] }
 heapless = "0.8"
 
 # Internal workspace crates

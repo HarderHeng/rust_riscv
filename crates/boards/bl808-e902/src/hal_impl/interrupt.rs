@@ -1,49 +1,63 @@
-//! BL808 interrupt controller driver (placeholder).
+//! BL808 E902 CLIC interrupt controller driver.
+
+use core::ptr::{read_volatile, write_volatile};
 
 use hal::InterruptController;
 
-/// A handle to the BL808 interrupt controller.
-///
-/// Placeholder implementation awaiting the BL808 memory map and interrupt
-/// controller register definitions.
+const CLIC_BASE: usize = 0xE080_0000;
+const CLIC_INFO: usize = CLIC_BASE + 0x04;
+const CLIC_MINTTHRESH: usize = CLIC_BASE + 0x08;
+const CLIC_INT_BASE: usize = CLIC_BASE + 0x1000;
+
+/// E902 interrupt controller backed by the T-Head CLIC.
 pub struct Bl808InterruptController;
 
 impl Bl808InterruptController {
-    /// Creates a new interrupt controller handle.
+    /// Creates a CLIC handle.
     pub const fn new() -> Self {
         Self
+    }
+
+    #[inline]
+    fn byte_address(irq: u32, offset: usize) -> usize {
+        CLIC_INT_BASE + irq as usize * 4 + offset
     }
 }
 
 impl InterruptController for Bl808InterruptController {
-    /// Placeholder priority configuration.
-    fn set_priority(&self, _irq: u32, _priority: u32) {
-        // TODO: Determine PLIC base address, source count and priority layout
-        todo!("BL808 interrupt priority not yet implemented")
+    fn set_priority(&self, irq: u32, priority: u32) {
+        let info = unsafe { read_volatile(CLIC_INFO as *const u32) };
+        let nlbits = ((info >> 21) & 0xF).min(8);
+        let shift = 8 - nlbits;
+        let value = ((priority.min(0xF) << shift) & 0xF0) as u8;
+        let address = Self::byte_address(irq, 3);
+        let old = unsafe { read_volatile(address as *const u8) };
+        unsafe { write_volatile(address as *mut u8, (old & 0x0F) | value) };
     }
 
-    /// Placeholder IRQ enable.
-    fn enable_irq(&self, _irq: u32) {
-        todo!("BL808 interrupt enable not yet implemented")
+    fn enable_irq(&self, irq: u32) {
+        let address = Self::byte_address(irq, 1);
+        let value = unsafe { read_volatile(address as *const u8) };
+        unsafe { write_volatile(address as *mut u8, value | 1) };
     }
 
-    /// Placeholder IRQ disable.
-    fn disable_irq(&self, _irq: u32) {
-        todo!("BL808 interrupt disable not yet implemented")
+    fn disable_irq(&self, irq: u32) {
+        let address = Self::byte_address(irq, 1);
+        let value = unsafe { read_volatile(address as *const u8) };
+        unsafe { write_volatile(address as *mut u8, value & !1) };
     }
 
-    /// Placeholder threshold configuration.
-    fn set_threshold(&self, _threshold: u32) {
-        todo!("BL808 interrupt threshold not yet implemented")
+    fn set_threshold(&self, threshold: u32) {
+        unsafe { write_volatile(CLIC_MINTTHRESH as *mut u32, threshold) };
     }
 
-    /// Placeholder IRQ claim.
     fn claim(&self) -> Option<u32> {
-        todo!("BL808 interrupt claim not yet implemented")
+        // CLIC dispatches directly to the vector; unlike PLIC it has no
+        // memory-mapped claim register.
+        None
     }
 
-    /// Placeholder IRQ completion.
     fn complete(&self, _irq: u32) {
-        todo!("BL808 interrupt complete not yet implemented")
+        // CLIC external interrupts are completed by returning from the trap.
     }
 }

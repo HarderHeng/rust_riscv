@@ -1,8 +1,13 @@
-//! BL808 C906 platform definition (placeholder).
+//! BL808 C906 platform definition.
 
 use hal::{MemoryLayout, Platform};
 
 use super::{interrupt::Bl808InterruptController, uart_bl808::Bl808Uart};
+
+/// BL808 D0 UART3 base address from the Bouffalo SDK.
+pub const UART3_BASE: usize = 0x3000_2000;
+/// BL808 C906 UART3 interrupt number from the SDK's D0 vector table.
+pub const UART3_IRQ: u32 = 20;
 
 /// Platform implementation for the BL808 C906 (riscv64imac, high-performance core).
 pub struct Bl808C906Platform {
@@ -14,8 +19,7 @@ impl Bl808C906Platform {
     /// Creates a new C906 platform instance.
     pub const fn new() -> Self {
         Self {
-            // TODO: Replace with actual UART base address
-            uart: Bl808Uart::new(0x0000_0000),
+            uart: Bl808Uart::new_dsp(UART3_BASE, 16, 17),
             interrupt_controller: Bl808InterruptController::new(),
         }
     }
@@ -34,8 +38,7 @@ impl Platform for Bl808C906Platform {
     }
 
     fn console_irq(&self) -> u32 {
-        // TODO: Determine actual UART IRQ number
-        0
+        UART3_IRQ
     }
 
     fn name(&self) -> &'static str {

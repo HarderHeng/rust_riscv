@@ -1,6 +1,8 @@
 [toolchain]
 channel = "nightly"
 components = ["rust-src", "llvm-tools-preview"]
+# BL808 E902/E907 use board-local `-Z build-std=core` because their
+# no-std target libraries are not distributed by rustup for this toolchain.
 targets = [
     "riscv32imac-unknown-none-elf",   # RV32IMAC - QEMU virt, BL808 C906
     "riscv64imac-unknown-none-elf",   # RV64IMAC - Future 64-bit support

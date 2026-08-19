@@ -3,7 +3,7 @@ name = "bl808-e907"
 version = "0.1.0"
 edition = "2021"
 authors = ["RISC-V Kernel Team"]
-description = "BL808 E907 (riscv32imacf) board support - M4F application core with FPU"
+description = "BL808 E907 (riscv32imafc) board support - M4F application core with FPU"
 
 [dependencies]
 hal = { path = "../../hal" }

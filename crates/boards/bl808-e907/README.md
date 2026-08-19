@@ -1,12 +1,12 @@
-# BL808 E907 Board Support (riscv32imacf)
+# BL808 E907 Board Support (riscv32imafc)
 
 ## Overview
 
 This crate provides bare-metal support for the **BL808 E907 core** - the application processor M4F RISC-V core on the Bouffalo Lab BL808 SoC with hardware floating-point support.
 
-**Status**: PLACEHOLDER - Awaiting hardware specifications
+**Status**: PARTIAL - UART/CLIC mappings implemented from Bouffalo SDK; boot/linker integration remains
 
-**Target**: `riscv32imacf-unknown-none-elf`
+**Target**: `riscv32imafc-unknown-none-elf`
 - **I**: Integer base instruction set
 - **M**: Integer multiplication/division
 - **A**: Atomic instructions
@@ -20,6 +20,16 @@ This crate provides bare-metal support for the **BL808 E907 core** - the applica
 - **Memory**: ITCM (Instruction TCM) + DTCM (Data TCM) + shared RAM
 - **FPU**: Hardware single-precision floating-point unit
 - **Typical Use Cases**: Real-time signal processing, audio/video, computation-intensive tasks
+
+## SDK-Derived Hardware Facts
+
+- LP RAM: DTCM `0x2202_C000..0x2203_0000`, shared RAM starts at `0x2203_0000`
+- UART1: `0x2000_A100`, IRQ `45`, GPIO18 TX / GPIO19 RX
+- UART: Bouffalo FIFO UART (not 16550A), XCLK-based 2,000,000 baud 8N1
+- CLIC: `0xE080_0000`; LP uses the SDK M-mode CLIC mapping
+
+The remaining platform work is the SDK image header/XIP linker integration,
+clock/TCM/FPU startup and a CLIC-compatible trap/vector path.
 
 ## What's Needed
 
@@ -78,29 +88,30 @@ To complete this board support package, we need:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Cargo.toml | ✅ Done | Dependencies on kernel, hal, riscv-common |
-| .cargo/config.toml | ✅ Done | Target: riscv32imacf-unknown-none-elf |
-| linker.ld | ⚠️ Template | PLACEHOLDER memory addresses |
+| .cargo/config.toml | ✅ Done | Target: riscv32imafc-unknown-none-elf |
+| linker.ld | ✅ Partial | SDK memory regions are ported; image header/XIP boot wrapper remains |
 | src/main.rs | ✅ Done | Entry point with todo!() placeholders |
-| src/hal_impl/uart_bl808.rs | ⚠️ Stub | todo!() - need UART specs |
-| src/hal_impl/interrupt.rs | ⚠️ Stub | todo!() - need PLIC specs |
-| src/hal_impl/platform.rs | ⚠️ Stub | Placeholder values |
+| src/hal_impl/uart_bl808.rs | ✅ Partial | SDK-derived FIFO, clock, GPIO and RX interrupt access |
+| src/hal_impl/interrupt.rs | ✅ Partial | SDK-derived CLIC register access |
+| src/hal_impl/platform.rs | ✅ Partial | SDK-derived UART1 base, IRQ and GPIO mapping |
 | openocd-runner.sh | ⚠️ Placeholder | Need OpenOCD config |
 
 ## Building
 
 ```bash
 cd crates/boards/bl808-e907
-cargo build
+cargo build -Z build-std=core
 ```
 
-**Note**: Build will fail with `todo!()` panics until hardware specifications are provided.
+**Note**: Workspace checking passes. Hardware execution still requires the
+BL808 image header, boot flow and linker integration.
 
 ## Hardware FPU Notes
 
 The E907 core includes a single-precision floating-point unit. To use it effectively:
 
 1. **Enable FPU in CSRs**: Set `mstatus.FS` field to enable FPU context
-2. **Compiler Support**: The `riscv32imacf-unknown-none-elf` target enables hardware FP instructions
+2. **Compiler Support**: The `riscv32imafc-unknown-none-elf` target enables hardware FP instructions
 3. **Context Switching**: Save/restore FPU registers (f0-f31, fcsr) on interrupts if needed
 
 Example FPU test (once platform is functional):

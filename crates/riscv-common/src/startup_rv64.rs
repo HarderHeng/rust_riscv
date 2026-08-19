@@ -3,7 +3,7 @@
 //! Provides the `_start` assembly entry point for RV64I architecture.
 //! This code:
 //! - Initializes the stack pointer
-//! - Zeros the BSS section
+//! - Copies initialized data and zeros the BSS section
 //! - Jumps to `kernel_main` in Rust
 //!
 //! Key difference from RV32: Uses 64-bit loads/stores (ld/sd) instead of 32-bit (lw/sw).
@@ -67,17 +67,25 @@ core::arch::global_asm!(
     "_start:",
     //  1. Point the stack pointer at the top of the reserved stack region.
     "   la   sp, _stack_top",
-
-    //  2. Zero the BSS segment (required by the C/Rust ABI: statics start at 0).
+    //  2. Copy initialized data from its load address to its runtime address.
+    "   la   t0, _sidata",
+    "   la   t1, _sdata",
+    "   la   t2, _edata",
+    "3: bgeu t1, t2, 4f",
+    "   ld   t3, 0(t0)",
+    "   sd   t3, 0(t1)",
+    "   addi t0, t0, 8",
+    "   addi t1, t1, 8",
+    "   j    3b",
+    "4:",
+    //  3. Zero the BSS segment (required by the C/Rust ABI: statics start at 0).
     "   la   t0, _sbss",
     "   la   t1, _ebss",
-    "1: bgeu t0, t1, 2f",      // Branch if t0 >= t1 (done)
-    "   sd   zero, 0(t0)",      // Store doubleword (64-bit) zero at t0
-    "   addi t0, t0, 8",        // Increment by 8 bytes (64-bit)
-    "   j    1b",               // Jump back to loop start
-    "2:",
-
-    //  3. Hand off to Rust. kernel_main must never return.
+    "5: bgeu t0, t1, 6f",
+    "   sd   zero, 0(t0)",
+    "   addi t0, t0, 8",
+    "   j    5b",
+    "6:",
+    //  4. Hand off to Rust. kernel_main must never return.
     "   j    kernel_main",
 );
-
