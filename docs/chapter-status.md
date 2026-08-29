@@ -6,7 +6,7 @@
 |----|----------|--------|
 | 0 环境 | QEMU + RustSBI-QEMU | **双核 HAL helloworld 已在 M1s 上跑通**；QEMU 仍建议用来对照算法 |
 | 1 裸机 | S 态打印 | **stage0 已在 M1s 上 `mret` 进 S 态，ACM0 打出 `[S] hello from supervisor on C906`** |
-| 2 批处理 | SBI 控制台 / 关机 | **sbi0 已做到旧版 `ecall` putchar/shutdown（代码已合入，待上板）** |
+| 2 批处理 | SBI 控制台 / 关机 | **sbi0 已在 M1s 上经 `ecall` 打出 `[S] hello via sbi` 和 `[M] shutdown`** |
 | 3 时钟中断 | `sbi_set_timer` | 缺 SBI 时钟 |
 | 4 Sv39 | 页表、恒等映射 | 核支持；物理区间要改成 PSRAM |
 | 5 进程 | 地址空间 | 未开始 |
