@@ -15,14 +15,14 @@
 | `0x58000000` | Flash XIP。D0 镜像入口也是这个地址 |
 | `0xe0000000` | PLIC |
 
-Linux `low_load` 给 C906 配的 PMP 允许：MM 外设 1MB、OpenSBI 64K、PSRAM 64MB、XIP 64MB、PLIC。以后进 S 态时不要和 `bouffalo-rt` 默认的栈保护打架；接 SBI 后应改回细粒度 PMP。
+Linux `low_load` 给 C906 配的 PMP 允许：MM 外设 1MB、OpenSBI 64K、PSRAM 64MB、XIP 64MB、PLIC。stage0 目前把 PMP 全开（`pmpaddr0=-1`，`pmpcfg0=0x1F`），避免 `bouffalo-rt` 栈保护 TOR 挡住 S 态 UART / XIP。细粒度 PMP 留给以后的 SBI。
 
 ## Flash 怎么摆（本仓库）
 
 | Flash 偏移 | XIP | 内容 |
 |------------|-----|------|
 | `0x000000` | group0 | `rust-helloworld-m0.bin`（含 4K BFNP 头） |
-| `0x100000` | group1，offset=`0x101000` | `rust-helloworld-d0.bin`（含 4K BFNP 头） |
+| `0x100000` | group1，offset=`0x101000` | S 态路径：`stage0.bin`（含 4K BFNP 头）。烧对照时换成 `rust-helloworld-d0.bin` |
 
 `0x58000000` 对应 Flash 里当前核的 image offset。M0 把 D0 的 offset 设成 `0x100000 + 0x1000`，所以 D0 的代码从自己那份头后面开始取指。
 

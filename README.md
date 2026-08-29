@@ -4,7 +4,7 @@
 
 本仓库只做板级，不 fork 内核。E907 没有 MMU，操作系统只跑在 C906 上。M0 负责拉核。
 
-当前第一步：双核 HAL helloworld（M1s 上已验证）。S 态、SBI、rCore 还没开始。
+当前路径：stage0（C906 上 M 态初始化后 `mret` 进 S 态）。helloworld 仍是双核 M 态对照。SBI、rCore 还没开始。
 
 改代码前先看 [AGENTS.md](AGENTS.md) 和 [docs/architecture.md](docs/architecture.md)。
 
@@ -28,7 +28,8 @@
 ```
 
 - `target/riscv32imac-unknown-none-elf/release/rust-helloworld-m0.bin` → Flash `0x0`
-- `target/riscv64imac-unknown-none-elf/release/rust-helloworld-d0.bin` → Flash `0x100000`
+- `target/riscv64imac-unknown-none-elf/release/stage0.bin` → Flash `0x100000`（S 态路径）
+- `target/riscv64imac-unknown-none-elf/release/rust-helloworld-d0.bin` → Flash `0x100000`（双核 M 态对照）
 
 ## 烧录
 
@@ -39,17 +40,18 @@ UART Type-C 上电后：BOOT+RST，先松 RST，再松 BOOT。
 ```bash
 flash_m1s.sh -y \
   --m0 target/riscv32imac-unknown-none-elf/release/rust-helloworld-m0.bin \
-  --d0 target/riscv64imac-unknown-none-elf/release/rust-helloworld-d0.bin
+  --d0 target/riscv64imac-unknown-none-elf/release/stage0.bin
 ```
 
 ```text
 rust helloworld from D0/C906, uart up
 rust helloworld from D0/C906, ipc synced
 rust helloworld from D0/C906, icache on
-hello world from D0/C906, count=1, gpio8 led=on
+[M] stage0 entering S-mode
+[S] hello from supervisor on C906
 ```
 
-之后大约每 5 秒一行。
+对照仍是 `rust-helloworld-d0.bin` 烧到 `0x100000`：两核都在 M 态，大约每 5 秒翻一次 LED。
 
 ```bash
 picocom -b 2000000 /dev/ttyACM0

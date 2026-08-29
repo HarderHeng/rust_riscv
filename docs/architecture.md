@@ -1,6 +1,6 @@
 # 本仓库代码架构
 
-当前落地的只有双核 M 态 helloworld。rCore / SBI / S 态还没有代码。
+当前落地的是双核 M 态 helloworld，以及 D0 上的 stage0（M 态初始化后 `mret` 进 S 态打印）。SBI / rCore 还没有代码。
 
 ## 目录
 
@@ -9,13 +9,15 @@ rcore-bl808/
   Cargo.toml              workspace；HAL 的 git+rev 写在这里
   helloworld-m0/          M0/E907，RV32，crate rust-helloworld-m0
   helloworld-d0/          D0/C906，RV64，crate rust-helloworld-d0
+  stage0/                 D0/C906，RV64，crate stage0；S 态路径
   scripts/build.sh        编译、截断、blri patch、校验 hash
+  scripts/check-stage0.sh 检查 stage0 的 BFNP / s_main / mret
   docs/architecture.md    本仓库代码怎么分层、怎么启动
   docs/memory-map.md      地址
   docs/chapter-status.md  对照 rCore-Tutorial 章节
 ```
 
-两份固件都是 `no_std` + `bouffalo_rt::entry`。链接脚本来自 `bouffalo-rt`（`build.rs` 里 `-Tbouffalo-rt.ld`）。
+三份固件都是 `no_std` + `bouffalo_rt::entry`。链接脚本来自 `bouffalo-rt`（`build.rs` 里 `-Tbouffalo-rt.ld`）。
 
 依赖不引用仓库外路径：
 
@@ -30,7 +32,8 @@ M0 feature：`bl808-mcu`。D0 feature：`bl808-dsp`。`blri` 由 `build.sh` 按�
 
 ```text
 Flash 0x000000  rust-helloworld-m0.bin   4KiB BFNP 头 + M0 payload
-Flash 0x100000  rust-helloworld-d0.bin   4KiB BFNP 头 + D0 payload
+Flash 0x100000  stage0.bin               4KiB BFNP 头 + D0 payload（S 态路径）
+                rust-helloworld-d0.bin   烧对照时换成这份
 
 BootROM → M0 @ 自己的 XIP
 M0 把 D0 入口写成 0x58000000，SF_CTRL group1 offset = 0x101000
@@ -103,20 +106,34 @@ GPIO、UART 引脚复用、`freerun` 用 HAL。
 
 两核都在拧 GPIO8，和 C helloworld 一样，灯周期可能看起来不整齐。
 
+## stage0
+
+`stage0/src/main.rs`。M 态前缀和 helloworld-d0 一样：UART3 XCLK 40 MHz、IPC、I-cache，并打出同样的 `uart up` / `ipc synced` / `icache on`。没有 5 秒 LED 循环。
+
+然后：
+
+1. 打印 `[M] stage0 entering S-mode`。
+2. PMP 全开：`pmpaddr0=-1`，`pmpcfg0=0x1F`（NAPOT + R/W/X）。覆盖 `bouffalo-rt` 的栈保护 TOR，否则 S 态访问 UART3 / XIP 会被拒。
+3. `satp=0`，`mstatus.MPP=S`，`mret` 到 `s_main`。
+4. S 态只写 UART3 FIFO `0x30002000+0x88`，不调 HAL。`UART_FIFO_CONFIG_1[5:0]`（`+0x84`）是 TX **剩余空间**（空=32）；`== 0` 表示满，写之前要等。
+
 ## 镜像打包
 
 `scripts/build.sh`：
 
-1. `cargo build` 两个 crate。
+1. `cargo build` 三个 crate（m0、d0、stage0）。
 2. `rust-objcopy -O binary`。
 3. 按头里 `0x84` group offset、`0x8C` `img_len` 截断。objcopy 常多约 72 字节；`blri` 会 hash 到 EOF，BootROM 只 hash `img_len`。
 4. `blri patch` 写 header SHA-256。
 5. 再算一遍 payload SHA-256，必须等于头里 `0x90`。
 
+`scripts/check-stage0.sh` 检查 `stage0.bin` 头是 BFNP，ELF 里有 `s_main` 和 `mret`。
+
 ## 和目标形态的关系
 
 ```text
-现在：  BootROM → helloworld-m0 → helloworld-d0（两核都在 M 态）
+现在：  BootROM → helloworld-m0 → stage0（M 态初始化，mret 进 S 态打印）
+对照：  BootROM → helloworld-m0 → helloworld-d0（两核都在 M 态循环）
 以后：  BootROM → M0 拉核 → D0 M 态（SBI）→ S 态 rCore
 ```
 

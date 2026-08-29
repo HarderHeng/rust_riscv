@@ -39,6 +39,9 @@ BootROM 认 `flag` 里的 hash。header 对不上就整片沉默，不像“程�
 - D0 等 IPC 时 `dcache.ipa`。开 I-cache 放在 IPC 之后，和 C `SystemInit` 一样。
 - 时钟：镜像头 MCU/DSP 都是 WiFi PLL **320 MHz**。我们没有跑 C 的 `GLB_Set_DSP_System_CLK(400M)`。
 - 板级 MMIO 用常量 + `read_volatile`/`write_volatile`，并在注释里写清对照的 C 函数。
+- S 态不要调用 HAL UART；只写 `0x30002000+0x88`。
+- 这一期 PMP 全开（`pmpaddr0=-1`，`pmpcfg0=0x1F`）。不要在没验证 `[S]` 之前改回细粒度。
+- 不要改 helloworld 两个 crate 来“顺便”做 stage0。
 
 ## 文档与提交
 
