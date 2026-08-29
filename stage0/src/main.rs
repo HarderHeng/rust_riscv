@@ -32,18 +32,18 @@ fn main(p: Peripherals, _c: Clocks) -> ! {
     let config = Config::default().set_baudrate(2_000_000.Bd());
     let mut serial = p.uart3.freerun(config, (tx, rx), Uart3Xclk).unwrap();
 
-    writeln!(serial, "rust helloworld from D0/C906, uart up").ok();
+    write!(serial, "rust helloworld from D0/C906, uart up\r\n").ok();
     serial.flush().ok();
 
     wait_for_m0();
-    writeln!(serial, "rust helloworld from D0/C906, ipc synced").ok();
+    write!(serial, "rust helloworld from D0/C906, ipc synced\r\n").ok();
     serial.flush().ok();
 
     enable_icache();
-    writeln!(serial, "rust helloworld from D0/C906, icache on").ok();
+    write!(serial, "rust helloworld from D0/C906, icache on\r\n").ok();
     serial.flush().ok();
 
-    writeln!(serial, "[M] stage0 entering S-mode").ok();
+    write!(serial, "[M] stage0 entering S-mode\r\n").ok();
     serial.flush().ok();
     pmp_allow_all();
     enter_s_mode(s_main);

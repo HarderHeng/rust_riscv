@@ -43,17 +43,17 @@ fn main(p: Peripherals, _c: Clocks) -> ! {
     let config = Config::default().set_baudrate(2_000_000.Bd());
     let mut serial = p.uart3.freerun(config, (tx, rx), Uart3Xclk).unwrap();
 
-    writeln!(serial, "rust helloworld from D0/C906, uart up").ok();
+    write!(serial, "rust helloworld from D0/C906, uart up\r\n").ok();
     serial.flush().ok();
 
     wait_for_m0();
-    writeln!(serial, "rust helloworld from D0/C906, ipc synced").ok();
+    write!(serial, "rust helloworld from D0/C906, ipc synced\r\n").ok();
     serial.flush().ok();
 
     // C `SystemInit` enables I-cache after IPC. Without it, `riscv::asm::delay`
     // fetches every loop iteration from XIP and a "5s" wait lasts minutes.
     enable_icache();
-    writeln!(serial, "rust helloworld from D0/C906, icache on").ok();
+    write!(serial, "rust helloworld from D0/C906, icache on\r\n").ok();
     serial.flush().ok();
 
     let mut led = p.gpio.io8.into_floating_output();
@@ -69,9 +69,9 @@ fn main(p: Peripherals, _c: Clocks) -> ! {
         }
         count = count.wrapping_add(1);
 
-        writeln!(
+        write!(
             serial,
-            "hello world from D0/C906, count={count}, {LED_PIN_NOTE} led={}",
+            "hello world from D0/C906, count={count}, {LED_PIN_NOTE} led={}\r\n",
             if led_on { "on" } else { "off" }
         )
         .ok();

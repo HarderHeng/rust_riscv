@@ -41,14 +41,14 @@ fn main(p: Peripherals, mut c: Clocks) -> ! {
     let config = Config::default().set_baudrate(2_000_000.Bd());
     let mut serial = p.uart0.freerun(config, (tx, rx), &c).unwrap();
 
-    writeln!(serial, "rust helloworld from M0/E907").ok();
+    write!(serial, "rust helloworld from M0/E907\r\n").ok();
     serial.flush().ok();
 
     enable_icache();
     enable_uart3_clock();
     start_d0_core();
-    writeln!(serial, "rust helloworld from M0/E907, started D0").ok();
-    writeln!(serial, "led pin=gpio8, period=5s").ok();
+    write!(serial, "rust helloworld from M0/E907, started D0\r\n").ok();
+    write!(serial, "led pin=gpio8, period=5s\r\n").ok();
     serial.flush().ok();
 
     let mut led_on = true;
@@ -61,9 +61,9 @@ fn main(p: Peripherals, mut c: Clocks) -> ! {
             led.set_low().ok();
         }
         count = count.wrapping_add(1);
-        writeln!(
+        write!(
             serial,
-            "hello world from M0/E907, count={count}, gpio8 led={}",
+            "hello world from M0/E907, count={count}, gpio8 led={}\r\n",
             if led_on { "on" } else { "off" }
         )
         .ok();
