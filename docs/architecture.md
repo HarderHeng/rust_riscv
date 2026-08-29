@@ -1,6 +1,6 @@
 # 本仓库代码架构
 
-当前落地的是双核 M 态 helloworld，以及 D0 上的 stage0（M 态初始化后 `mret` 进 S 态打印）。SBI / rCore 还没有代码。
+当前落地的是 helloworld + stage0 + sbi0。SBI / rCore 还没有完整形态。
 
 ## 目录
 
@@ -9,15 +9,17 @@ rcore-bl808/
   Cargo.toml              workspace；HAL 的 git+rev 写在这里
   helloworld-m0/          M0/E907，RV32，crate rust-helloworld-m0
   helloworld-d0/          D0/C906，RV64，crate rust-helloworld-d0
-  stage0/                 D0/C906，RV64，crate stage0；S 态路径
+  stage0/                 D0/C906，RV64，crate stage0；S 态直接写 FIFO 对照
+  sbi0/                   D0/C906，RV64，crate sbi0；M 态 SBI + S 态 ecall
   scripts/build.sh        编译、截断、blri patch、校验 hash
   scripts/check-stage0.sh 检查 stage0 的 BFNP / s_main / mret
+  scripts/check-sbi0.sh   检查 sbi0 的 BFNP / s_main / mret / trap
   docs/architecture.md    本仓库代码怎么分层、怎么启动
   docs/memory-map.md      地址
   docs/chapter-status.md  对照 rCore-Tutorial 章节
 ```
 
-三份固件都是 `no_std` + `bouffalo_rt::entry`。链接脚本来自 `bouffalo-rt`（`build.rs` 里 `-Tbouffalo-rt.ld`）。
+四份固件都是 `no_std` + `bouffalo_rt::entry`。链接脚本来自 `bouffalo-rt`（`build.rs` 里 `-Tbouffalo-rt.ld`）。
 
 依赖不引用仓库外路径：
 
@@ -32,8 +34,9 @@ M0 feature：`bl808-mcu`。D0 feature：`bl808-dsp`。`blri` 由 `build.sh` 按�
 
 ```text
 Flash 0x000000  rust-helloworld-m0.bin   4KiB BFNP 头 + M0 payload
-Flash 0x100000  stage0.bin               4KiB BFNP 头 + D0 payload（S 态路径）
-                rust-helloworld-d0.bin   烧对照时换成这份
+Flash 0x100000  sbi0.bin                 4KiB BFNP 头 + D0 payload（S 态路径，默认）
+                stage0.bin               烧对照时换成这份（S 态直接写 FIFO）
+                rust-helloworld-d0.bin   烧对照时换成这份（双核 M 态）
 
 BootROM → M0 @ 自己的 XIP
 M0 把 D0 入口写成 0x58000000，SF_CTRL group1 offset = 0x101000
@@ -117,24 +120,37 @@ GPIO、UART 引脚复用、`freerun` 用 HAL。
 3. `satp=0`，`mstatus.MPP=S`，`mret` 到 `s_main`。
 4. S 态只写 UART3 FIFO `0x30002000+0x88`，不调 HAL。`UART_FIFO_CONFIG_1[5:0]`（`+0x84`）是 TX **剩余空间**（空=32）；`== 0` 表示满，写之前要等。
 
+## sbi0
+
+`sbi0/src/main.rs`。M 态前缀与 stage0 相同：UART3 XCLK 40 MHz、IPC、I-cache、PMP 全开。
+
+陷阱与委托：
+
+- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg=0`，关 `mie`/`sie`。
+- S 态只 `ecall`：`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。
+- M 态 `trap_handle`：`mcause==9` 时按 `a7` 分发；putchar 写 `0x30002000+0x88`（等 `+0x84[5:0] != 0`）；shutdown 打 `[M] shutdown\r\n` 后空转。
+- 其它 `mcause` 打 `[M] trap`；其它 `a7` 打 `[M] bad sbi`。
+
 ## 镜像打包
 
 `scripts/build.sh`：
 
-1. `cargo build` 三个 crate（m0、d0、stage0）。
+1. `cargo build` 四个 crate（m0、d0、stage0、sbi0）。
 2. `rust-objcopy -O binary`。
 3. 按头里 `0x84` group offset、`0x8C` `img_len` 截断。objcopy 常多约 72 字节；`blri` 会 hash 到 EOF，BootROM 只 hash `img_len`。
 4. `blri patch` 写 header SHA-256。
 5. 再算一遍 payload SHA-256，必须等于头里 `0x90`。
 
-`scripts/check-stage0.sh` 检查 `stage0.bin` 头是 BFNP，ELF 里有 `s_main` 和 `mret`。
+`scripts/check-stage0.sh` 检查 `stage0.bin` 头是 BFNP，ELF 里有 `s_main` 和 `mret`。  
+`scripts/check-sbi0.sh` 检查 `sbi0.bin` 头与 trap / ecall 符号。
 
 ## 和目标形态的关系
 
 ```text
-现在：  BootROM → helloworld-m0 → stage0（M 态初始化，mret 进 S 态打印）
+现在：  BootROM → helloworld-m0 → sbi0（M 态 SBI，S 态 ecall）
+对照：  BootROM → helloworld-m0 → stage0（S 态直接写 FIFO）
 对照：  BootROM → helloworld-m0 → helloworld-d0（两核都在 M 态循环）
-以后：  BootROM → M0 拉核 → D0 M 态（SBI）→ S 态 rCore
+以后：  BootROM → M0 拉核 → D0 M 态（完整 SBI）→ S 态 rCore
 ```
 
 下一层代码应继续让 M0 只拉核；C906 上的 OS 入口、页表、UART 驱动另开 crate，不要在 helloworld 里堆内核。

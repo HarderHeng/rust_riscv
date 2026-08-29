@@ -22,7 +22,7 @@ Linux `low_load` 给 C906 配的 PMP 允许：MM 外设 1MB、OpenSBI 64K、PSRA
 | Flash 偏移 | XIP | 内容 |
 |------------|-----|------|
 | `0x000000` | group0 | `rust-helloworld-m0.bin`（含 4K BFNP 头） |
-| `0x100000` | group1，offset=`0x101000` | S 态路径：`stage0.bin`（含 4K BFNP 头）。烧对照时换成 `rust-helloworld-d0.bin` |
+| `0x100000` | group1，offset=`0x101000` | S 态路径：`sbi0.bin`（含 4K BFNP 头）。对照时换成 `stage0.bin` 或 `rust-helloworld-d0.bin` |
 
 `0x58000000` 对应 Flash 里当前核的 image offset。M0 把 D0 的 offset 设成 `0x100000 + 0x1000`，所以 D0 的代码从自己那份头后面开始取指。
 
