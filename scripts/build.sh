@@ -2,7 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BLRI_DIR="${BLRI_DIR:-$ROOT/../bouffalo-hal}"
+# Keep in sync with workspace.dependencies in Cargo.toml.
+HAL_GIT="${HAL_GIT:-https://github.com/rustsbi/bouffalo-hal}"
+HAL_REV="${HAL_REV:-ea477a96b6c43ec906b9e29abd56c7c5e2338ca2}"
+HOST_ROOT="$ROOT/target/host-tools"
 M0_TARGET=riscv32imac-unknown-none-elf
 D0_TARGET=riscv64imac-unknown-none-elf
 M0_ELF="$ROOT/target/$M0_TARGET/release/rust-helloworld-m0"
@@ -12,23 +15,23 @@ D0_BIN="$D0_ELF.bin"
 
 cd "$ROOT"
 
-find_blri() {
-    if [[ -x "$BLRI_DIR/target/x86_64-unknown-linux-gnu/release/blri" ]]; then
-        echo "$BLRI_DIR/target/x86_64-unknown-linux-gnu/release/blri"
-    elif [[ -x "$BLRI_DIR/target/release/blri" ]]; then
-        echo "$BLRI_DIR/target/release/blri"
-    else
-        echo ""
+ensure_blri() {
+    if [[ -n "${BLRI:-}" && -x "$BLRI" ]]; then
+        return
     fi
+    if command -v blri >/dev/null 2>&1; then
+        BLRI="$(command -v blri)"
+        return
+    fi
+    BLRI="$HOST_ROOT/bin/blri"
+    if [[ ! -x "$BLRI" ]]; then
+        echo "installing blri from $HAL_GIT @$HAL_REV ..."
+        cargo install blri --git "$HAL_GIT" --rev "$HAL_REV" --root "$HOST_ROOT"
+    fi
+    [[ -x "$BLRI" ]] || { echo "找不到 blri" >&2; exit 1; }
 }
 
-BLRI="$(find_blri)"
-if [[ -z "$BLRI" ]]; then
-    echo "building blri to patch boot header hash..."
-    cargo build --release -p blri --manifest-path "$BLRI_DIR/Cargo.toml"
-    BLRI="$(find_blri)"
-fi
-[[ -n "$BLRI" ]] || { echo "找不到 blri" >&2; exit 1; }
+ensure_blri
 
 if ! rustup target list --installed | grep -qx "$M0_TARGET"; then
     rustup target add "$M0_TARGET"

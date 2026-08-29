@@ -5,15 +5,11 @@ edition = "2024"
 publish = false
 
 [dependencies]
-bouffalo-hal = { path = "../../bouffalo-hal/bouffalo-hal", features = ["bl808"] }
+bouffalo-hal = { workspace = true, features = ["bl808"] }
 panic-halt = "1.0.0"
 riscv = "0.13.0"
 embedded-time = "0.12.1"
-
-[dependencies.bouffalo-rt]
-path = "../../bouffalo-hal/bouffalo-rt"
-default-features = false
-features = ["bl808-dsp"]
+bouffalo-rt = { workspace = true, features = ["bl808-dsp"] }
 
 [[bin]]
 name = "rust-helloworld-d0"

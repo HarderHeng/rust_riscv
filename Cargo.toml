@@ -1,3 +1,7 @@
 [workspace]
 members = ["helloworld-m0", "helloworld-d0"]
 resolver = "3"
+
+[workspace.dependencies]
+bouffalo-hal = { git = "https://github.com/rustsbi/bouffalo-hal", rev = "ea477a96b6c43ec906b9e29abd56c7c5e2338ca2" }
+bouffalo-rt = { git = "https://github.com/rustsbi/bouffalo-hal", rev = "ea477a96b6c43ec906b9e29abd56c7c5e2338ca2", default-features = false }

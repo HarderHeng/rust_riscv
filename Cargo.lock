@@ -38,6 +38,7 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 [[package]]
 name = "bouffalo-hal"
 version = "0.0.0"
+source = "git+https://github.com/rustsbi/bouffalo-hal?rev=ea477a96b6c43ec906b9e29abd56c7c5e2338ca2#ea477a96b6c43ec906b9e29abd56c7c5e2338ca2"
 dependencies = [
  "as-slice",
  "atomic-waker",
@@ -57,6 +58,7 @@ dependencies = [
 [[package]]
 name = "bouffalo-rt"
 version = "0.0.0"
+source = "git+https://github.com/rustsbi/bouffalo-hal?rev=ea477a96b6c43ec906b9e29abd56c7c5e2338ca2#ea477a96b6c43ec906b9e29abd56c7c5e2338ca2"
 dependencies = [
  "as-slice",
  "bouffalo-hal",
@@ -71,6 +73,7 @@ dependencies = [
 [[package]]
 name = "bouffalo-rt-macros"
 version = "0.0.0"
+source = "git+https://github.com/rustsbi/bouffalo-hal?rev=ea477a96b6c43ec906b9e29abd56c7c5e2338ca2#ea477a96b6c43ec906b9e29abd56c7c5e2338ca2"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -1,6 +1,6 @@
 # 内存图
 
-地址来自 BL808 手册、本工作区 Linux `low_load`，以及 `bouffalo-rt` 的链接脚本。第一期 stage0 **还没有**启用 PSRAM；S 态暂时仍在 XIP + 核内 SRAM 上跑。
+地址来自 BL808 手册、本工作区 Linux `low_load`，以及 `bouffalo-rt` 的链接脚本。helloworld **还没有**启用 PSRAM；两核都在 XIP + 核内 SRAM 上跑。
 
 ## C906 能看到的窗口（Linux 参照）
 
@@ -15,14 +15,14 @@
 | `0x58000000` | Flash XIP。D0 镜像入口也是这个地址 |
 | `0xe0000000` | PLIC |
 
-Linux `low_load` 给 C906 配的 PMP 允许：MM 外设 1MB、OpenSBI 64K、PSRAM 64MB、XIP 64MB、PLIC。stage0 进 S 态前改成「PMP 全开」，避免和 `bouffalo-rt` 默认的栈保护冲突。后续接 SBI 时应改回细粒度 PMP。
+Linux `low_load` 给 C906 配的 PMP 允许：MM 外设 1MB、OpenSBI 64K、PSRAM 64MB、XIP 64MB、PLIC。以后进 S 态时不要和 `bouffalo-rt` 默认的栈保护打架；接 SBI 后应改回细粒度 PMP。
 
 ## Flash 怎么摆（本仓库）
 
 | Flash 偏移 | XIP | 内容 |
 |------------|-----|------|
-| `0x000000` | group0 | `loader-m0.bin`（含 4K BFNP 头） |
-| `0x100000` | group1，offset=`0x101000` | `stage0.bin`（含 4K BFNP 头） |
+| `0x000000` | group0 | `rust-helloworld-m0.bin`（含 4K BFNP 头） |
+| `0x100000` | group1，offset=`0x101000` | `rust-helloworld-d0.bin`（含 4K BFNP 头） |
 
 `0x58000000` 对应 Flash 里当前核的 image offset。M0 把 D0 的 offset 设成 `0x100000 + 0x1000`，所以 D0 的代码从自己那份头后面开始取指。
 
