@@ -1,5 +1,5 @@
 [workspace]
-members = ["helloworld-m0", "helloworld-d0", "stage0"]
+members = ["helloworld-m0", "helloworld-d0", "stage0", "sbi0"]
 resolver = "3"
 
 [workspace.dependencies]

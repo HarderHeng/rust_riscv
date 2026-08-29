@@ -365,6 +365,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sbi0"
+version = "0.1.0"
+dependencies = [
+ "bouffalo-hal",
+ "bouffalo-rt",
+ "embedded-time",
+ "panic-halt",
+ "riscv",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
