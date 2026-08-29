@@ -3,6 +3,7 @@
 
 use bouffalo_hal::{
     prelude::*,
+    psram::init_psram,
     uart::{Config, RegisterBlock as UartRegs},
 };
 use bouffalo_rt::{Clocks, Peripherals, entry};
@@ -13,7 +14,7 @@ use riscv::{
     asm,
     register::{
         mcounteren, medeleg, mepc, mideleg, mie, mip, mstatus, mtvec, pmpaddr0, pmpcfg0, satp,
-        sie, sstatus, stvec, time,
+        sie, stvec, time,
     },
 };
 use xuantie_riscv::{asm as xt_asm, register::mhcr};
@@ -41,6 +42,16 @@ const C906_RTC_EN: u32 = 1 << 31;
 
 const MTIMECMPL: usize = 0xE400_4000;
 const MTIMECMPH: usize = 0xE400_4004;
+const PSRAM_BASE: usize = 0x5000_0000;
+const PSRAM_PROBE: usize = PSRAM_BASE + 0x1000;
+const PAGE_TABLE: usize = PSRAM_BASE;
+const M_PSRAM_MAGIC: u64 = 0x5A5A_5A5A_5A5A_5A5A;
+const S_PSRAM_MAGIC: u64 = 0xA5A5_A5A5_A5A5_A5A5;
+const TZC_SEC_BASE: usize = 0x2000_5000;
+const TZC_PSRAMA_TZSRG_CTRL: usize = TZC_SEC_BASE + 0x380;
+const TZC_PSRAMA_R0_EN: u32 = 1 << 16;
+const PTE_LEAF: u64 = 0xC7;
+const CACHE_LINE: usize = 64;
 
 const SBI_SET_TIMER: usize = 0;
 const SBI_CONSOLE_PUTCHAR: usize = 1;
@@ -237,6 +248,17 @@ fn main(p: Peripherals, _c: Clocks) -> ! {
     enable_mtimer_clock();
     pmp_allow_all();
     install_trap();
+
+    init_psram(&p.psram, &p.glb);
+    tzc_release_psrama();
+    if !psram_probe(M_PSRAM_MAGIC) {
+        write!(serial, "[M] psram fail\r\n").ok();
+        serial.flush().ok();
+        hang();
+    }
+    write!(serial, "[M] psram ok\r\n").ok();
+    serial.flush().ok();
+
     write!(serial, "[M] sbi0 entering S-mode\r\n").ok();
     serial.flush().ok();
     enter_s_mode(s_main);
@@ -303,6 +325,57 @@ fn enable_mtimer_clock() {
         v |= C906_RTC_EN;
         write_volatile(MM_MISC_CPU_RTC as *mut u32, v);
     }
+}
+
+/// C `Tzc_Sec_PSRAMA_Access_Release`: clear region0 EN (bit 16).
+fn tzc_release_psrama() {
+    unsafe {
+        let v = read_volatile(TZC_PSRAMA_TZSRG_CTRL as *const u32);
+        write_volatile(TZC_PSRAMA_TZSRG_CTRL as *mut u32, v & !TZC_PSRAMA_R0_EN);
+    }
+}
+
+fn psram_probe(magic: u64) -> bool {
+    unsafe {
+        write_volatile(PSRAM_PROBE as *mut u64, magic);
+        read_volatile(PSRAM_PROBE as *const u64) == magic
+    }
+}
+
+fn dcache_clean_range(addr: usize, len: usize) {
+    let mut a = addr & !(CACHE_LINE - 1);
+    let end = addr + len;
+    unsafe {
+        while a < end {
+            xt_asm::dcache_cpal1(a);
+            a += CACHE_LINE;
+        }
+        asm::fence();
+    }
+}
+
+fn pte_1g(pa: u64) -> u64 {
+    ((pa >> 12) << 10) | PTE_LEAF
+}
+
+fn build_identity_root() {
+    let table = PAGE_TABLE as *mut u64;
+    unsafe {
+        for i in 0..512 {
+            write_volatile(table.add(i), 0);
+        }
+        write_volatile(table.add(0), pte_1g(0x0000_0000));
+        write_volatile(table.add(1), pte_1g(0x4000_0000));
+    }
+    dcache_clean_range(PAGE_TABLE, 4096);
+}
+
+fn enable_sv39() {
+    asm::sfence_vma_all();
+    unsafe {
+        satp::set(satp::Mode::Sv39, 0, PAGE_TABLE >> 12);
+    }
+    asm::sfence_vma_all();
 }
 
 fn pmp_allow_all() {
@@ -524,13 +597,14 @@ extern "C" fn s_main() -> ! {
     vec.set_trap_mode(stvec::TrapMode::Direct);
     unsafe {
         stvec::write(vec);
-        sie::set_stimer();
     }
-    sbi_set_timer(rdtime() + TICK_INTERVAL);
-    unsafe {
-        sstatus::set_sie();
+    build_identity_root();
+    enable_sv39();
+    s_puts("[S] satp on\r\n");
+    if psram_probe(S_PSRAM_MAGIC) {
+        s_puts("[S] psram ok\r\n");
+    } else {
+        s_puts("[S] psram fail\r\n");
     }
-    loop {
-        asm::wfi();
-    }
+    sbi_shutdown();
 }
