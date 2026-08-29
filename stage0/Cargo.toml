@@ -1,0 +1,17 @@
+[package]
+name = "stage0"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bouffalo-hal = { workspace = true, features = ["bl808"] }
+panic-halt = "1.0.0"
+riscv = "0.13.0"
+embedded-time = "0.12.1"
+bouffalo-rt = { workspace = true, features = ["bl808-dsp"] }
+
+[[bin]]
+name = "stage0"
+test = false
+bench = false
