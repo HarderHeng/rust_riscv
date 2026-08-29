@@ -11,9 +11,11 @@ D0_TARGET=riscv64imac-unknown-none-elf
 M0_ELF="$ROOT/target/$M0_TARGET/release/rust-helloworld-m0"
 D0_ELF="$ROOT/target/$D0_TARGET/release/rust-helloworld-d0"
 STAGE0_ELF="$ROOT/target/$D0_TARGET/release/stage0"
+SBI0_ELF="$ROOT/target/$D0_TARGET/release/sbi0"
 M0_BIN="$M0_ELF.bin"
 D0_BIN="$D0_ELF.bin"
 STAGE0_BIN="$STAGE0_ELF.bin"
+SBI0_BIN="$SBI0_ELF.bin"
 
 cd "$ROOT"
 
@@ -79,27 +81,33 @@ PY
 cargo build -p rust-helloworld-m0 --release --target "$M0_TARGET"
 cargo build -p rust-helloworld-d0 --release --target "$D0_TARGET"
 cargo build -p stage0 --release --target "$D0_TARGET"
+cargo build -p sbi0 --release --target "$D0_TARGET"
 rust-objcopy --binary-architecture=riscv32 --strip-all -O binary "$M0_ELF" "$M0_BIN"
 rust-objcopy --binary-architecture=riscv64 --strip-all -O binary "$D0_ELF" "$D0_BIN"
 rust-objcopy --binary-architecture=riscv64 --strip-all -O binary "$STAGE0_ELF" "$STAGE0_BIN"
+rust-objcopy --binary-architecture=riscv64 --strip-all -O binary "$SBI0_ELF" "$SBI0_BIN"
 
 # objcopy may append padding past img_len. blri hashes to EOF, BootROM hashes
 # only img_len bytes — that mismatch is why previous M0 images never ran.
 truncate_to_img_len "$M0_BIN"
 truncate_to_img_len "$D0_BIN"
 truncate_to_img_len "$STAGE0_BIN"
+truncate_to_img_len "$SBI0_BIN"
 "$BLRI" patch "$M0_BIN"
 "$BLRI" patch "$D0_BIN"
 "$BLRI" patch "$STAGE0_BIN"
+"$BLRI" patch "$SBI0_BIN"
 verify_hash "$M0_BIN"
 verify_hash "$D0_BIN"
 verify_hash "$STAGE0_BIN"
+verify_hash "$SBI0_BIN"
 
 echo
 echo "M0 BIN:     $M0_BIN"
 echo "D0 BIN:     $D0_BIN"
 echo "STAGE0 BIN: $STAGE0_BIN"
-ls -l "$M0_BIN" "$D0_BIN" "$STAGE0_BIN"
+echo "SBI0 BIN:   $SBI0_BIN"
+ls -l "$M0_BIN" "$D0_BIN" "$STAGE0_BIN" "$SBI0_BIN"
 echo
-echo "烧录 stage0（BOOT+RST，先松 RST，再松 BOOT）："
-echo "  flash_m1s.sh -y --m0 $M0_BIN --d0 $STAGE0_BIN"
+echo "烧录 sbi0（BOOT+RST，先松 RST，再松 BOOT）："
+echo "  flash_m1s.sh -y --m0 $M0_BIN --d0 $SBI0_BIN"
