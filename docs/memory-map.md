@@ -1,6 +1,6 @@
 # 内存图
 
-地址来自 BL808 手册、本工作区 Linux `low_load`，以及 `bouffalo-rt` 的链接脚本。helloworld / stage0 还没有启用 PSRAM；**sbi0 在 M 态 `init_psram` 之后用 `0x50000000` 放根页表（4KiB），冒烟在 `0x50001000`**。两核代码仍在 XIP 上跑。
+地址来自 BL808 手册、本工作区 Linux `low_load`，以及 `bouffalo-rt` 的链接脚本。helloworld / stage0 还没有启用 PSRAM。sbi0 在 M 态 `init_psram` 之后：冒烟 `0x50001000`，trampoline `0x50002000`，根/L1 页表 `0x50004000` / `0x50005000` / `0x50006000`。开 `satp` 后的 **S 取指**走 Linux `PAGE_OFFSET=0xffffffe000000000`（2MB 叶盖住 `0x50000000`），不是低 VA 恒等。两核代码仍从 XIP 取指（M 态 trap 仍是物理 `0x58000000`）。
 
 ## C906 能看到的窗口（Linux 参照）
 
@@ -34,4 +34,15 @@ Linux `low_load` 给 C906 配的 PMP 允许：MM 外设 1MB、OpenSBI 64K、PSRA
 | `0x51ff8000` | DTB（若继续用 OpenSBI + FDT，Linux 用过这个地址） |
 | `0x3eff0000` | SBI 固件（可沿用 Linux） |
 
-QEMU virt 的 `0x80000000` DRAM **不存在**。移植 ch4 时改的是物理页帧起止，不是 Sv39 本身。
+QEMU virt 的 `0x80000000` DRAM **不存在**。移植页帧池时改物理起止。C906 上 **S 态 I-fetch** 还要走高 VA（`0xffffffe000000000`），不能假设 QEMU 那种低地址恒等取指在实机上能过。
+
+## sbi0 Sv39 窗口（板上已打出）
+
+| VA | PA | 叶 | 用途 |
+|----|----|----|------|
+| `0xffffffe000000000` | `0x50000000` | 2MB `PAGE_KERNEL_EXEC` | 开 `satp` 后的 S 取指 |
+| `0x50000000` | `0x50000000` | 2MB `PAGE_KERNEL`（无 X） | S 态 `lui` 探测 PSRAM |
+| （物理，satp=0） | `0x50002000` | — | trampoline：`csrw satp` 本身 |
+| （物理） | `0x50004000+` | 4KiB 表 | 根 / L1 |
+
+`csrw satp` 后下一条物理 PC `0x50002004` 会 IPF；M 改 `mepc` 到 `0xffffffe000002004`。

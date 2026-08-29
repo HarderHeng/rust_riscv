@@ -140,8 +140,36 @@ GPIO、UART 引脚复用、`freerun`、M 态 UART3 FIFO（`uart::RegisterBlock`�
 - `mtvec = trap_m`（direct），`medeleg=0`，`mideleg` 只委托 S 态时钟。`mcounteren.TM=1`。`enter_s_mode` 置 `MPIE`，并把 `satp` 清 0。
 - 开 D0 mtimer：`0x30000018`，`div=319`。`mtimecmp` 三拍 32 位写。
 - M 态在 `mret` 前：HAL `init_psram`，TZC `0x20005000+0x380` 清 bit 16，冒烟 `0x50001000`。失败打 `[M] psram fail` 并停，不要进 S。
-- S 态 `ecall`：`a7=0` set_timer（保留），`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。hello 之后在 `0x50000000` 建两条 1GB 恒等叶，`satp=Sv39`。这一章 **不要**开 `SIE`。
+- S 态 `ecall`：`a7=0` set_timer（保留），`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。Sv39 见下一节。这一章 **不要**开 `SIE`。
 - M 态 FIFO 用 HAL `uart::RegisterBlock`。`mcause` 用入口原值比较。
+
+### C906 Sv39（第 4 章，板上已打出）
+
+对照本机 Linux：`M1s_BL808_Linux_SDK/linux-5.10.4-808` 的 `c906.config`（`PAGE_OFFSET=0xffffffe000000000`）和 `arch/riscv/kernel/head.S` `relocate`。Bouffalo C SDK **从不**在 D0 上写非零 `satp`（`rv_hart` 进 S 前清 0），不能当 Sv39 参考。
+
+**能跑的取指路径（不要改回低 VA 恒等）：**
+
+1. 进 S 前：`mxstatus` 置 THEADISAEE / MM / MAEE，清 MHRD。缺 MAEE 时开 `satp` 会 `mcause=0`（指令地址非对齐），不是 12。
+2. PSRAM 冒烟后再按 C `csi_dcache_enable` 开 D-cache。页表用 `dcache_cpal1` 写回，不要 `dcache_cpa` / HAL `l1c_dcache_clean_range`。
+3. 根表在 PSRAM `0x50004000`。`root[vpn2(PAGE_OFFSET)]` → L1，`L1[0]` 是 2MB 叶：`PAGE_OFFSET` → `0x50000000`，属性 Linux `PAGE_KERNEL_EXEC`（V|R|W|X|G|A|D|SH|B|C）。另建 PSRAM 恒等 **data** 叶（无 X）给探测用的 `lui 0x50001`。
+4. 把 trampoline 拷到 `0x50002000`，`mepc` 指过去，`satp` 仍为 0。S 在那里 `csrw satp`。
+5. 下一条在**物理 PC** 上取指，必 IPF（cause 12）。M 把 `mepc` 改成 `PAGE_OFFSET + 0x2004` 再 `mret`。这就是 Linux 的 `stvec = VA of 1f`（我们 `medeleg=0`，所以在 M 里做）。
+6. 之后的 S 取指、`ecall` 返回都走高 VA。`[S] satp on` / `[S] psram ok` 必须发生在这一步之后。
+
+**板上已否定、不要再试：**
+
+| 做法 | 结果 |
+|------|------|
+| 低 VA 恒等取指（XIP `0x5800_xxxx` / VRAM `0x3f00_xxxx` / PSRAM `0x5000_xxxx`） | 数据 PTW / `MPRV`+`MPP=S` 能 load，S 取指必 12 |
+| 1GB / 2MB / 4K 叶，只要 I-fetch VA 是低地址 | 一样 IPF |
+| 页表放 VRAM 还是 PSRAM（只改表位置） | 低 VA 取指仍 12 |
+| 软件填 jTLB（`tlbwi` / `tlbwr`） | 仍在第一条 S 取指上 12 |
+| M 写 `satp` 再 `mret`，或 S 写 `satp` 指望下一条已在流水线 | `csrw satp` 会冲流水线，下一条仍是冷 I-fetch |
+| 关 I-cache、`dcache.ciall`、给非叶加 C/B | 没能让低 VA 取指活下来 |
+
+数据通路和取指通路不是一回事：I-UTLB / D-UTLB 分开。OpenC906 PTW 里 I-fetch 的 X/SO 检查是注释掉的，硅上仍可能不同；不要用 OpenC906 RTL 去推翻 Linux `head.S`。
+
+`xuantie-riscv` 的 `PageSize::Page1G = 2` 和 SDK 填 jTLB 的 `4<<16` 不一致；jTLB 在这章已经不是通路，不要靠那套。
 
 ## 镜像打包
 

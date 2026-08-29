@@ -8,7 +8,7 @@
 | 1 裸机 | S 态打印 | **stage0 已在 M1s 上 `mret` 进 S 态，ACM0 打出 `[S] hello from supervisor on C906`** |
 | 2 批处理 | SBI 控制台 / 关机 | **sbi0 已在 M1s 上经 `ecall` 打出 `[S] hello via sbi` 和 `[M] shutdown`** |
 | 3 时钟中断 | `sbi_set_timer` | **sbi0 已在 M1s 上打出 `[S] tick 1`…`[S] tick 5` 和 `[M] shutdown`** |
-| 4 Sv39 | 页表、恒等映射 | **sbi0 已做到 PSRAM + Sv39 恒等映射（代码已合入，待上板）** |
+| 4 Sv39 | 页表、恒等映射 | **sbi0 已在 M1s 上打出 `[S] satp on` / `[S] psram ok` / `[M] shutdown`（Linux `PAGE_OFFSET` 高 VA 取指）** |
 | 5 进程 | 地址空间 | 未开始 |
 | 6 文件系统 | easy-fs | 未开始；块设备可能是 XIP 或 SD |
 | 7 进程间通信 / 更后 | — | 未开始 |

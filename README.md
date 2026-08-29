@@ -44,7 +44,7 @@ flash_m1s.sh -y \
   --d0 target/riscv64imac-unknown-none-elf/release/sbi0.bin
 ```
 
-期望 ACM0 输出（第 4 章 Sv39 + PSRAM 待上板）：
+期望 ACM0 输出（第 4 章 Sv39 + PSRAM，板上已打出；中间可有诊断行）：
 
 ```text
 rust helloworld from D0/C906, uart up

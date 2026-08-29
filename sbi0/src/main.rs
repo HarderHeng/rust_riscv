@@ -13,11 +13,14 @@ use panic_halt as _;
 use riscv::{
     asm,
     register::{
-        mcounteren, medeleg, mepc, mideleg, mie, mip, mstatus, mtvec, pmpaddr0, pmpcfg0, satp,
-        sie, stvec, time,
+        mcounteren, medeleg, mepc, mideleg, mie, mip, mstatus, mtval, mtvec, pmpaddr0, pmpcfg0,
+        satp, sie, stvec, time,
     },
 };
-use xuantie_riscv::{asm as xt_asm, register::mhcr};
+use xuantie_riscv::{
+    asm as xt_asm,
+    register::{mhcr, mxstatus},
+};
 
 const XTAL_HZ: u32 = 40_000_000;
 const DSP_HZ: u32 = 320_000_000;
@@ -44,18 +47,42 @@ const MTIMECMPL: usize = 0xE400_4000;
 const MTIMECMPH: usize = 0xE400_4004;
 const PSRAM_BASE: usize = 0x5000_0000;
 const PSRAM_PROBE: usize = PSRAM_BASE + 0x1000;
-const PAGE_TABLE: usize = PSRAM_BASE;
+const PSRAM_TRAMP: usize = PSRAM_BASE + 0x2000;
+const PT_ROOT: usize = PSRAM_BASE + 0x4000;
+const PT_L1: usize = PSRAM_BASE + 0x5000;
+const PT_L0: usize = PSRAM_BASE + 0x6000;
 const M_PSRAM_MAGIC: u64 = 0x5A5A_5A5A_5A5A_5A5A;
 const S_PSRAM_MAGIC: u64 = 0xA5A5_A5A5_A5A5_A5A5;
 const TZC_SEC_BASE: usize = 0x2000_5000;
 const TZC_PSRAMA_TZSRG_CTRL: usize = TZC_SEC_BASE + 0x380;
 const TZC_PSRAMA_R0_EN: u32 = 1 << 16;
-const PTE_LEAF: u64 = 0xC7;
+const PTE_V: u64 = 1;
+const PTE_R: u64 = 1 << 1;
+const PTE_W: u64 = 1 << 2;
+const PTE_X: u64 = 1 << 3;
+const PTE_G: u64 = 1 << 5;
+const PTE_A: u64 = 1 << 6;
+const PTE_D: u64 = 1 << 7;
+const PTE_THEAD_SH: u64 = 1 << 60;
+const PTE_THEAD_B: u64 = 1 << 61;
+const PTE_THEAD_C: u64 = 1 << 62;
+const PTE_THEAD_PMA: u64 = PTE_THEAD_SH | PTE_THEAD_B | PTE_THEAD_C;
+/// Linux `PAGE_KERNEL_EXEC` on this tree (`c906.config`).
+const PTE_LEAF_KEXEC: u64 =
+    PTE_V | PTE_R | PTE_W | PTE_X | PTE_G | PTE_A | PTE_D | PTE_THEAD_PMA;
+/// Linux `PAGE_KERNEL` (data). Identity probe after satp.
+const PTE_LEAF_KDATA: u64 = PTE_V | PTE_R | PTE_W | PTE_G | PTE_A | PTE_D | PTE_THEAD_PMA;
+/// Linux `PAGE_TABLE`: V only.
+const PTE_NEXT: u64 = PTE_V;
+/// M1s Linux `CONFIG_PAGE_OFFSET`. First translated I-fetch is this window.
+const PAGE_OFFSET: u64 = 0xffff_ffe0_0000_0000;
+const CAUSE_IPF: usize = 12;
 const CACHE_LINE: usize = 64;
 
 const SBI_SET_TIMER: usize = 0;
 const SBI_CONSOLE_PUTCHAR: usize = 1;
 const SBI_SHUTDOWN: usize = 8;
+const SBI_ENABLE_SATP: usize = 32;
 const CAUSE_IRQ: usize = 1 << (usize::BITS - 1);
 const CAUSE_ECALL_S: usize = 9;
 const CAUSE_M_TIMER: usize = CAUSE_IRQ | 7;
@@ -72,6 +99,8 @@ impl bouffalo_hal::uart::Clock for Uart3Xclk {
 unsafe extern "C" {
     fn trap_m();
     fn trap_s();
+    fn psram_tramp();
+    fn psram_tramp_end();
 }
 
 core::arch::global_asm!(
@@ -224,6 +253,120 @@ core::arch::global_asm!(
     "    ld sp, 16(sp)",
     "    sret",
     ".popsection",
+    ".pushsection .text.psram_tramp,\"ax\",@progbits",
+    ".align 2",
+    ".globl psram_tramp",
+    ".type psram_tramp, @function",
+    "psram_tramp:",
+    "    csrw satp, a0",
+    "    sfence.vma",
+    "    fence rw, rw",
+    "    fence.i",
+    "    .long 0x0020000b",
+    "    .long 0x0190000b",
+    "    li a7, 1",
+    "    li a1, 0",
+    "    li a2, 0",
+    "    li a0, 0x5b",
+    "    ecall",
+    "    li a0, 0x53",
+    "    ecall",
+    "    li a0, 0x5d",
+    "    ecall",
+    "    li a0, 0x20",
+    "    ecall",
+    "    li a0, 0x73",
+    "    ecall",
+    "    li a0, 0x61",
+    "    ecall",
+    "    li a0, 0x74",
+    "    ecall",
+    "    li a0, 0x70",
+    "    ecall",
+    "    li a0, 0x20",
+    "    ecall",
+    "    li a0, 0x6f",
+    "    ecall",
+    "    li a0, 0x6e",
+    "    ecall",
+    "    li a0, 0x0d",
+    "    ecall",
+    "    li a0, 0x0a",
+    "    ecall",
+    "    lui a3, 0x50002",
+    "    ld a4, -8(a3)",
+    "    lui a3, 0x50001",
+    "    sd a4, 0(a3)",
+    "    ld a5, 0(a3)",
+    "    bne a5, a4, .Lpt_fail",
+    "    li a0, 0x5b",
+    "    ecall",
+    "    li a0, 0x53",
+    "    ecall",
+    "    li a0, 0x5d",
+    "    ecall",
+    "    li a0, 0x20",
+    "    ecall",
+    "    li a0, 0x70",
+    "    ecall",
+    "    li a0, 0x73",
+    "    ecall",
+    "    li a0, 0x72",
+    "    ecall",
+    "    li a0, 0x61",
+    "    ecall",
+    "    li a0, 0x6d",
+    "    ecall",
+    "    li a0, 0x20",
+    "    ecall",
+    "    li a0, 0x6f",
+    "    ecall",
+    "    li a0, 0x6b",
+    "    ecall",
+    "    j .Lpt_nl",
+    ".Lpt_fail:",
+    "    li a0, 0x5b",
+    "    ecall",
+    "    li a0, 0x53",
+    "    ecall",
+    "    li a0, 0x5d",
+    "    ecall",
+    "    li a0, 0x20",
+    "    ecall",
+    "    li a0, 0x70",
+    "    ecall",
+    "    li a0, 0x73",
+    "    ecall",
+    "    li a0, 0x72",
+    "    ecall",
+    "    li a0, 0x61",
+    "    ecall",
+    "    li a0, 0x6d",
+    "    ecall",
+    "    li a0, 0x20",
+    "    ecall",
+    "    li a0, 0x66",
+    "    ecall",
+    "    li a0, 0x61",
+    "    ecall",
+    "    li a0, 0x69",
+    "    ecall",
+    "    li a0, 0x6c",
+    "    ecall",
+    ".Lpt_nl:",
+    "    li a0, 0x0d",
+    "    ecall",
+    "    li a0, 0x0a",
+    "    ecall",
+    "    li a7, 8",
+    "    li a0, 0",
+    "    li a1, 0",
+    "    li a2, 0",
+    "    ecall",
+    "    unimp",
+    ".globl psram_tramp_end",
+    "psram_tramp_end:",
+    ".popsection",
 );
 
 #[entry]
@@ -248,15 +391,32 @@ fn main(p: Peripherals, _c: Clocks) -> ! {
     enable_mtimer_clock();
     pmp_allow_all();
     install_trap();
+    enable_c906_mmu_ext();
+    write!(serial, "[M] trap on\r\n").ok();
+    serial.flush().ok();
 
+    write!(serial, "[M] psram init\r\n").ok();
+    serial.flush().ok();
     init_psram(&p.psram, &p.glb);
+    write!(serial, "[M] psram inited\r\n").ok();
+    serial.flush().ok();
+
     tzc_release_psrama();
+    write!(serial, "[M] tzc ok\r\n").ok();
+    serial.flush().ok();
+
+    write!(serial, "[M] probe\r\n").ok();
+    serial.flush().ok();
     if !psram_probe(M_PSRAM_MAGIC) {
         write!(serial, "[M] psram fail\r\n").ok();
         serial.flush().ok();
         hang();
     }
     write!(serial, "[M] psram ok\r\n").ok();
+    serial.flush().ok();
+
+    enable_dcache();
+    write!(serial, "[M] dcache on\r\n").ok();
     serial.flush().ok();
 
     write!(serial, "[M] sbi0 entering S-mode\r\n").ok();
@@ -302,6 +462,22 @@ fn enable_icache() {
         mhcr::set_ie();
         asm::fence();
         asm::fence_i();
+    }
+}
+
+/// C `csi_dcache_enable`: invalidate then DE|WB|WA|RS|BPE|BTB.
+/// C906 page-table walks go through D-cache; I-cache alone is not enough for satp.
+fn enable_dcache() {
+    unsafe {
+        asm::fence();
+        xt_asm::dcache_iall();
+        mhcr::set_de();
+        mhcr::set_wb();
+        mhcr::set_wa();
+        mhcr::set_rs();
+        mhcr::set_bpe();
+        mhcr::set_btb();
+        asm::fence();
     }
 }
 
@@ -354,28 +530,134 @@ fn dcache_clean_range(addr: usize, len: usize) {
     }
 }
 
-fn pte_1g(pa: u64) -> u64 {
-    ((pa >> 12) << 10) | PTE_LEAF
+fn pte_leaf(pa: u64, flags: u64) -> u64 {
+    ((pa >> 12) << 10) | flags
+}
+
+fn pte_next(table_pa: u64) -> u64 {
+    ((table_pa >> 12) << 10) | PTE_NEXT
+}
+
+fn sv39_vpn(va: u64) -> u64 {
+    va & 0x007f_ffff_ffff
+}
+
+fn vpn2(va: u64) -> usize {
+    ((sv39_vpn(va) >> 30) as usize) & 0x1FF
+}
+
+fn vpn1(va: u64) -> usize {
+    ((sv39_vpn(va) >> 21) as usize) & 0x1FF
+}
+
+fn kva(pa: usize) -> usize {
+    PAGE_OFFSET as usize + (pa - PSRAM_BASE)
+}
+
+fn root_table_pa() -> usize {
+    PT_ROOT
+}
+
+fn l1_pa() -> usize {
+    PT_L1
 }
 
 fn build_identity_root() {
-    let table = PAGE_TABLE as *mut u64;
+    let root = PT_ROOT as *mut u64;
+    let l1_hi = PT_L1 as *mut u64;
+    let l1_lo = PT_L0 as *mut u64;
     unsafe {
         for i in 0..512 {
-            write_volatile(table.add(i), 0);
+            write_volatile(root.add(i), 0);
+            write_volatile(l1_hi.add(i), 0);
+            write_volatile(l1_lo.add(i), 0);
         }
-        write_volatile(table.add(0), pte_1g(0x0000_0000));
-        write_volatile(table.add(1), pte_1g(0x4000_0000));
+        // Linux trampoline: PAGE_OFFSET -> load_pa as 2MB PAGE_KERNEL_EXEC.
+        write_volatile(root.add(vpn2(PAGE_OFFSET)), pte_next(PT_L1 as u64));
+        write_volatile(
+            l1_hi.add(vpn1(PAGE_OFFSET)),
+            pte_leaf(PSRAM_BASE as u64, PTE_LEAF_KEXEC),
+        );
+        // Identity PSRAM for the trampoline's `lui 0x50001` probe (data PTW).
+        write_volatile(root.add(vpn2(PSRAM_BASE as u64)), pte_next(PT_L0 as u64));
+        write_volatile(
+            l1_lo.add(vpn1(PSRAM_BASE as u64)),
+            pte_leaf(PSRAM_BASE as u64, PTE_LEAF_KDATA),
+        );
     }
-    dcache_clean_range(PAGE_TABLE, 4096);
+    dcache_clean_range(PT_ROOT, 4096);
+    dcache_clean_range(PT_L1, 4096);
+    dcache_clean_range(PT_L0, 4096);
 }
 
-fn enable_sv39() {
-    asm::sfence_vma_all();
+fn csrr_satp() -> usize {
+    let v: usize;
     unsafe {
-        satp::set(satp::Mode::Sv39, 0, PAGE_TABLE >> 12);
+        core::arch::asm!("csrr {0}, satp", out(reg) v, options(nostack));
     }
-    asm::sfence_vma_all();
+    v
+}
+
+fn csrr_mxstatus() -> usize {
+    let v: usize;
+    unsafe {
+        core::arch::asm!("csrr {0}, 0x7C0", out(reg) v, options(nostack));
+    }
+    v
+}
+
+/// Linux `relocate`: map `PAGE_OFFSET` → PSRAM, leave `satp=0`, jump to the
+/// physical trampoline. The insn after `csrw satp` is fetched at the physical
+/// PC (unmapped / no-X); M redirects that IPF to the high VA, same as
+/// `stvec = PAGE_OFFSET + (1f - _start)` in `head.S`.
+#[inline(never)]
+fn enable_sv39_m() -> usize {
+    let root = root_table_pa();
+    let satp_bits = (8usize << 60) | (root >> 12);
+    copy_psram_tramp();
+    let pte_k = unsafe { read_volatile((root as *const u64).add(vpn2(PAGE_OFFSET))) };
+    let pte_2m = unsafe { read_volatile((l1_pa() as *const u64).add(vpn1(PAGE_OFFSET))) };
+    uart3_puts("[M] root ");
+    uart3_put_hex(root);
+    uart3_puts(" pgd ");
+    uart3_put_hex(pte_k as usize);
+    uart3_puts(" pmd ");
+    uart3_put_hex(pte_2m as usize);
+    uart3_puts("\r\n[M] mx ");
+    uart3_put_hex(csrr_mxstatus());
+    uart3_puts(" pmp ");
+    uart3_put_hex(pmpcfg0::read().bits);
+    uart3_puts(" satp0 ");
+    uart3_put_hex(csrr_satp());
+    uart3_puts(" run ");
+    uart3_put_hex(PSRAM_TRAMP);
+    uart3_puts(" kva ");
+    uart3_put_hex(kva(PSRAM_TRAMP + 4));
+    uart3_puts("\r\n");
+    satp_bits
+}
+
+fn copy_psram_tramp() {
+    let src = psram_tramp as *const () as *const u8;
+    let n = (psram_tramp_end as *const () as usize)
+        .wrapping_sub(psram_tramp as *const () as usize);
+    unsafe {
+        core::ptr::copy_nonoverlapping(src, PSRAM_TRAMP as *mut u8, n);
+        write_volatile((PSRAM_TRAMP - 8) as *mut u64, S_PSRAM_MAGIC);
+    }
+    dcache_clean_range(PSRAM_TRAMP - 8, n + 8);
+    asm::fence_i();
+}
+
+/// C906 startup: THEADISAEE + MM. Linux/OpenSBI also set MAEE so PTE[63:59]
+/// are memory attributes (C/B) instead of reserved.
+fn enable_c906_mmu_ext() {
+    unsafe {
+        mxstatus::set_theadisaee();
+        mxstatus::set_mm();
+        mxstatus::set_maee();
+        mxstatus::clear_mhrd();
+    }
 }
 
 fn pmp_allow_all() {
@@ -484,9 +766,29 @@ extern "C" fn trap_handle(a0: usize, a7: usize, cause: usize) -> usize {
         handle_m_timer();
         return a0;
     }
+    if cause == CAUSE_IPF {
+        let pc = mepc::read();
+        let phys_after = PSRAM_TRAMP + 4;
+        let va_after = kva(phys_after);
+        if pc == phys_after {
+            // Linux relocate: physical PC after `csrw satp` is not the
+            // mapped window; continue at PAGE_OFFSET + offset.
+            uart3_puts("[M] ipf->kva ");
+            uart3_put_hex(va_after);
+            uart3_puts("\r\n");
+            unsafe {
+                mepc::write(va_after);
+            }
+            return a0;
+        }
+    }
     if cause != CAUSE_ECALL_S {
         uart3_puts("[M] trap ");
         uart3_put_hex(cause);
+        uart3_puts(" pc ");
+        uart3_put_hex(mepc::read());
+        uart3_puts(" tval ");
+        uart3_put_hex(mtval::read());
         uart3_puts("\r\n");
         hang();
     }
@@ -503,6 +805,13 @@ extern "C" fn trap_handle(a0: usize, a7: usize, cause: usize) -> usize {
         SBI_SHUTDOWN => {
             uart3_puts("[M] shutdown\r\n");
             hang();
+        }
+        SBI_ENABLE_SATP => {
+            let satp_bits = enable_sv39_m();
+            unsafe {
+                mepc::write(PSRAM_TRAMP);
+            }
+            satp_bits
         }
         _ => {
             uart3_puts("[M] bad sbi\r\n");
@@ -538,6 +847,20 @@ fn sbi_set_timer(next: u64) {
             in("a1") 0usize,
             in("a2") 0usize,
             in("a7") SBI_SET_TIMER,
+            options(nostack)
+        );
+    }
+}
+
+fn sbi_enable_satp() {
+    let _ret: usize;
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            inlateout("a0") 0usize => _ret,
+            in("a1") 0usize,
+            in("a2") 0usize,
+            in("a7") SBI_ENABLE_SATP,
             options(nostack)
         );
     }
@@ -599,7 +922,8 @@ extern "C" fn s_main() -> ! {
         stvec::write(vec);
     }
     build_identity_root();
-    enable_sv39();
+    s_puts("[S] pt\r\n");
+    sbi_enable_satp();
     s_puts("[S] satp on\r\n");
     if psram_probe(S_PSRAM_MAGIC) {
         s_puts("[S] psram ok\r\n");
