@@ -46,13 +46,12 @@ M 态前半与 `helloworld-d0` 相同，不要发明第二套拉核/时钟：
 1. `enable_uart3_clock`（XCLK 40 MHz）。
 2. GPIO16/17 + `uart3.freerun(..., Uart3Xclk)`，2 Mbps。
 3. 打印 `uart up`。
-4. `wait_for_m0`（IPC `0x40000000/4` = `0x12345678`，循环里 `dcache.ipa`）。
-5. `enable_icache`。
-6. 打印 `ipc synced`、`icache on`。
-7. 打印 `[M] stage0 entering S-mode` 并 `flush`。
-8. 放开 PMP（见下）。
-9. `satp = 0`。
-10. `mstatus.MPP = S`（bits `[12:11] = 01`），`mepc = s_main`，`mret`。
+4. `wait_for_m0`（IPC `0x40000000/4` = `0x12345678`，循环里 `dcache.ipa`），然后打印 `ipc synced`。
+5. `enable_icache`，然后打印 `icache on`。
+6. 打印 `[M] stage0 entering S-mode` 并 `flush`。
+7. 放开 PMP（见下）。
+8. `satp = 0`。
+9. `mstatus.MPP = S`（bits `[12:11] = 01`），`mepc = s_main`，`mret`。
 
 `s_main`（S 态，`-> !`）：
 
@@ -66,7 +65,7 @@ M 态前半与 `helloworld-d0` 相同，不要发明第二套拉核/时钟：
 
 `bouffalo-rt` `_start` 已经写了 `pmpcfg0` / `pmpaddr0..1`，把 `0x3F000000` 一段禁掉给 S/U。C906 上只要配过 PMP，未命中区间对 S 态通常是拒绝，UART3 和 XIP 都会炸。
 
-这一期：**整段地址空间 NAPOT + R/W/X**，覆盖 `pmpcfg0` 最低一档即可（`A=NAPOT`，`XWR=111`）。细粒度 PMP 留给以后的 SBI。
+这一期：**整段地址空间 NAPOT + R/W/X**。先 `csrw pmpaddr0, -1`，再 `csrw pmpcfg0, 0x1F`（最低一档 `A=NAPOT`、`XWR=111`，其余 entry 清零）。编号小的 entry 先匹配，后面 `bouffalo-rt` 留下的 TOR 不会再生效。细粒度 PMP 留给以后的 SBI。
 
 ## 失败怎么看
 
