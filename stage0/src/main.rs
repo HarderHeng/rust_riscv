@@ -43,9 +43,10 @@ fn main(p: Peripherals, _c: Clocks) -> ! {
     writeln!(serial, "rust helloworld from D0/C906, icache on").ok();
     serial.flush().ok();
 
-    loop {
-        core::hint::spin_loop();
-    }
+    writeln!(serial, "[M] stage0 entering S-mode").ok();
+    serial.flush().ok();
+    pmp_allow_all();
+    enter_s_mode(s_main);
 }
 
 fn enable_uart3_clock() {
@@ -100,5 +101,70 @@ fn dcache_invalidate(addr: usize) {
             options(nostack)
         );
         core::arch::asm!("fence", options(nostack));
+    }
+}
+
+const UART3_BASE: usize = 0x3000_2000;
+const UART_FIFO_CONFIG_1: usize = UART3_BASE + 0x84;
+const UART_FIFO_WDATA: usize = UART3_BASE + 0x88;
+
+fn pmp_allow_all() {
+    unsafe {
+        let addr: usize = usize::MAX;
+        let cfg: usize = 0x1F;
+        core::arch::asm!(
+            "csrw pmpaddr0, {addr}",
+            "csrw pmpcfg0, {cfg}",
+            addr = in(reg) addr,
+            cfg = in(reg) cfg,
+            options(nostack)
+        );
+    }
+}
+
+fn enter_s_mode(dest: extern "C" fn() -> !) -> ! {
+    let dest = dest as usize;
+    unsafe {
+        core::arch::asm!(
+            "csrw satp, zero",
+            "csrr {mstatus}, mstatus",
+            "li {tmp}, {mpp_mask}",
+            "and {mstatus}, {mstatus}, {tmp}",
+            "li {tmp}, {mpp_s}",
+            "or {mstatus}, {mstatus}, {tmp}",
+            "csrw mstatus, {mstatus}",
+            "csrw mepc, {dest}",
+            "mret",
+            dest = in(reg) dest,
+            mstatus = out(reg) _,
+            tmp = out(reg) _,
+            mpp_mask = const !(0b11 << 11),
+            mpp_s = const 0b01 << 11,
+            options(nostack)
+        );
+        core::hint::unreachable_unchecked();
+    }
+}
+
+fn uart3_putb(b: u8) {
+    unsafe {
+        while (read_volatile(UART_FIFO_CONFIG_1 as *const u32) & 0x3F) >= 32 {
+            core::hint::spin_loop();
+        }
+        write_volatile(UART_FIFO_WDATA as *mut u32, b as u32);
+    }
+}
+
+fn uart3_puts(s: &str) {
+    for b in s.as_bytes() {
+        uart3_putb(*b);
+    }
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn s_main() -> ! {
+    uart3_puts("[S] hello from supervisor on C906\r\n");
+    loop {
+        core::hint::spin_loop();
     }
 }
