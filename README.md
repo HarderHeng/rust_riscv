@@ -34,8 +34,10 @@
 
 UART Type-C 上电后：BOOT+RST，先松 RST，再松 BOOT。
 
+工作区里的烧录脚本（本仓库不绑定它的路径）：
+
 ```bash
-../flash_m1s.sh -y \
+flash_m1s.sh -y \
   --m0 target/riscv32imac-unknown-none-elf/release/rust-helloworld-m0.bin \
   --d0 target/riscv64imac-unknown-none-elf/release/rust-helloworld-d0.bin
 ```
@@ -55,11 +57,10 @@ picocom -b 2000000 /dev/ttyACM0
 
 ## 文档
 
-- [给 Agent 的规则](AGENTS.md)
-- [代码架构](docs/architecture.md)
-- [启动链](docs/boot-chain.md)
-- [内存图](docs/memory-map.md)
-- [对照 Tutorial](docs/chapter-status.md)
+- [AGENTS.md](AGENTS.md) — 给 Agent 的规则
+- [docs/architecture.md](docs/architecture.md) — 本仓库代码架构
+- [docs/memory-map.md](docs/memory-map.md) — 地址
+- [docs/chapter-status.md](docs/chapter-status.md) — 对照 Tutorial
 
 ## 许可
 

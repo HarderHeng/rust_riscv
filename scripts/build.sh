@@ -93,5 +93,5 @@ echo "M0 BIN: $M0_BIN"
 echo "D0 BIN: $D0_BIN"
 ls -l "$M0_BIN" "$D0_BIN"
 echo
-echo "烧录（先进入下载模式：BOOT+RST，先松 RST，再松 BOOT）："
-echo "  $ROOT/../flash_m1s.sh -y --m0 $M0_BIN --d0 $D0_BIN"
+echo "烧录（BOOT+RST，先松 RST，再松 BOOT）："
+echo "  flash_m1s.sh -y --m0 $M0_BIN --d0 $D0_BIN"

@@ -10,7 +10,9 @@ rcore-bl808/
   helloworld-m0/          M0/E907，RV32，crate rust-helloworld-m0
   helloworld-d0/          D0/C906，RV64，crate rust-helloworld-d0
   scripts/build.sh        编译、截断、blri patch、校验 hash
-  docs/                   架构 / 启动链 / 内存 / Tutorial 对照
+  docs/architecture.md    本仓库代码怎么分层、怎么启动
+  docs/memory-map.md      地址
+  docs/chapter-status.md  对照 rCore-Tutorial 章节
 ```
 
 两份固件都是 `no_std` + `bouffalo_rt::entry`。链接脚本来自 `bouffalo-rt`（`build.rs` 里 `-Tbouffalo-rt.ld`）。
@@ -119,3 +121,5 @@ GPIO、UART 引脚复用、`freerun` 用 HAL。
 ```
 
 下一层代码应继续让 M0 只拉核；C906 上的 OS 入口、页表、UART 驱动另开 crate，不要在 helloworld 里堆内核。
+
+地址表见 [memory-map.md](memory-map.md)。和 Tutorial 各章的对照见 [chapter-status.md](chapter-status.md)。不要和 Linux `whole_img` 混烧。
