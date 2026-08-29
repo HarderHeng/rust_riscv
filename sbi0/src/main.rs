@@ -1,11 +1,22 @@
 #![no_std]
 #![no_main]
 
-use bouffalo_hal::{prelude::*, uart::Config};
+use bouffalo_hal::{
+    prelude::*,
+    uart::{Config, RegisterBlock as UartRegs},
+};
 use bouffalo_rt::{Clocks, Peripherals, entry};
 use core::ptr::{read_volatile, write_volatile};
 use embedded_time::rate::*;
 use panic_halt as _;
+use riscv::{
+    asm,
+    register::{
+        mcounteren, medeleg, mepc, mideleg, mie, mip, mstatus, mtvec, pmpaddr0, pmpcfg0, satp,
+        sie, sstatus, stvec, time,
+    },
+};
+use xuantie_riscv::{asm as xt_asm, register::mhcr};
 
 const XTAL_HZ: u32 = 40_000_000;
 const DSP_HZ: u32 = 320_000_000;
@@ -22,8 +33,6 @@ const IPC_SYNC_ADDR1: usize = 0x4000_0000;
 const IPC_SYNC_ADDR2: usize = 0x4000_0004;
 const IPC_SYNC_FLAG: u32 = 0x1234_5678;
 const UART3_BASE: usize = 0x3000_2000;
-const UART_FIFO_CONFIG_1: usize = UART3_BASE + 0x84;
-const UART_FIFO_WDATA: usize = UART3_BASE + 0x88;
 
 const MM_MISC_BASE: usize = 0x3000_0000;
 const MM_MISC_CPU_RTC: usize = MM_MISC_BASE + 0x18;
@@ -36,16 +45,10 @@ const MTIMECMPH: usize = 0xE400_4004;
 const SBI_SET_TIMER: usize = 0;
 const SBI_CONSOLE_PUTCHAR: usize = 1;
 const SBI_SHUTDOWN: usize = 8;
-const CAUSE_ECALL_S: usize = 9;
 const CAUSE_IRQ: usize = 1 << (usize::BITS - 1);
+const CAUSE_ECALL_S: usize = 9;
 const CAUSE_M_TIMER: usize = CAUSE_IRQ | 7;
 const CAUSE_S_TIMER: usize = CAUSE_IRQ | 5;
-const MIP_STIP: usize = 1 << 5;
-const MIE_MTIE: usize = 1 << 7;
-const MIDELEG_STI: usize = 1 << 5;
-const MSTATUS_MPIE: usize = 1 << 7;
-const SIE_STIE: usize = 1 << 5;
-const SSTATUS_SIE: usize = 1 << 1;
 
 struct Uart3Xclk;
 
@@ -271,26 +274,19 @@ fn wait_for_m0() {
 
 fn enable_icache() {
     unsafe {
-        core::arch::asm!("fence", options(nostack));
-        core::arch::asm!("fence.i", options(nostack));
-        core::arch::asm!(".word 0x0100000b", options(nostack));
-        let mut mhcr: usize;
-        core::arch::asm!("csrr {mhcr}, 0x7C1", mhcr = out(reg) mhcr, options(nostack));
-        mhcr |= 1;
-        core::arch::asm!("csrw 0x7C1, {mhcr}", mhcr = in(reg) mhcr, options(nostack));
-        core::arch::asm!("fence", options(nostack));
-        core::arch::asm!("fence.i", options(nostack));
+        asm::fence();
+        asm::fence_i();
+        xt_asm::icache_iall();
+        mhcr::set_ie();
+        asm::fence();
+        asm::fence_i();
     }
 }
 
 fn dcache_invalidate(addr: usize) {
     unsafe {
-        core::arch::asm!(
-            ".insn i 0x0b, 0x0, x0, {addr}, 0x2a",
-            addr = in(reg) addr,
-            options(nostack)
-        );
-        core::arch::asm!("fence", options(nostack));
+        xt_asm::dcache_ipa(addr);
+        asm::fence();
     }
 }
 
@@ -311,70 +307,64 @@ fn enable_mtimer_clock() {
 
 fn pmp_allow_all() {
     unsafe {
-        let addr: usize = usize::MAX;
-        let cfg: usize = 0x1F;
-        core::arch::asm!(
-            "csrw pmpaddr0, {addr}",
-            "csrw pmpcfg0, {cfg}",
-            addr = in(reg) addr,
-            cfg = in(reg) cfg,
-            options(nostack)
-        );
+        pmpaddr0::write(usize::MAX);
+        pmpcfg0::write(0x1F);
     }
 }
 
 fn install_trap() {
-    let addr = trap_m as *const () as usize;
+    let mut vec = mtvec::Mtvec::from_bits(0);
+    vec.set_address(trap_m as *const () as usize);
+    vec.set_trap_mode(mtvec::TrapMode::Direct);
     unsafe {
-        core::arch::asm!(
-            "csrw mtvec, {addr}",
-            "csrw medeleg, zero",
-            "csrw mideleg, {sti}",
-            "csrw mie, zero",
-            "csrw sie, zero",
-            addr = in(reg) addr,
-            sti = in(reg) MIDELEG_STI,
-            options(nostack)
-        );
+        mtvec::write(vec);
+        medeleg::write(medeleg::Medeleg::from_bits(0));
+        mideleg::write(mideleg::Mideleg::from_bits(1 << 5));
+        mie::write(mie::Mie::from_bits(0));
+        sie::write(sie::Sie::from_bits(0));
+        mcounteren::set_tm();
     }
 }
 
 fn enter_s_mode(dest: extern "C" fn() -> !) -> ! {
-    let dest = dest as usize;
     unsafe {
-        core::arch::asm!(
-            "csrw satp, zero",
-            "csrr {mstatus}, mstatus",
-            "li {tmp}, {mpp_mask}",
-            "and {mstatus}, {mstatus}, {tmp}",
-            "li {tmp}, {mpp_s_mpie}",
-            "or {mstatus}, {mstatus}, {tmp}",
-            "csrw mstatus, {mstatus}",
-            "csrw mepc, {dest}",
-            "mret",
-            dest = in(reg) dest,
-            mstatus = out(reg) _,
-            tmp = out(reg) _,
-            mpp_mask = const !(0b11 << 11),
-            mpp_s_mpie = const (0b01 << 11) | MSTATUS_MPIE,
-            options(nostack)
-        );
+        satp::write(satp::Satp::from_bits(0));
+        mstatus::set_mpp(mstatus::MPP::Supervisor);
+        mstatus::set_mpie();
+        mepc::write(dest as usize);
+        core::arch::asm!("mret", options(nostack));
         core::hint::unreachable_unchecked();
     }
 }
 
+fn uart3_regs() -> &'static UartRegs {
+    unsafe { &*(UART3_BASE as *const UartRegs) }
+}
+
 fn uart3_putb(b: u8) {
+    let uart = uart3_regs();
+    while uart.fifo_config_1.read().transmit_available_bytes() == 0 {
+        core::hint::spin_loop();
+    }
     unsafe {
-        while (read_volatile(UART_FIFO_CONFIG_1 as *const u32) & 0x3F) == 0 {
-            core::hint::spin_loop();
-        }
-        write_volatile(UART_FIFO_WDATA as *mut u32, b as u32);
+        uart.fifo_write.write(b);
     }
 }
 
 fn uart3_puts(s: &str) {
     for b in s.as_bytes() {
         uart3_putb(*b);
+    }
+}
+
+fn uart3_put_hex(v: usize) {
+    for i in (0..16).rev() {
+        let n = (v >> (i * 4)) & 0xf;
+        uart3_putb(if n < 10 {
+            b'0' + n as u8
+        } else {
+            b'a' + (n as u8 - 10)
+        });
     }
 }
 
@@ -386,38 +376,12 @@ fn hang() -> ! {
 
 fn bump_mepc() {
     unsafe {
-        core::arch::asm!(
-            "csrr {p}, mepc",
-            "addi {p}, {p}, 4",
-            "csrw mepc, {p}",
-            p = out(reg) _,
-            options(nostack)
-        );
+        mepc::write(mepc::read().wrapping_add(4));
     }
 }
 
-fn csr_set(csr: u32, bits: usize) {
-    unsafe {
-        match csr {
-            0x304 => core::arch::asm!("csrs mie, {b}", b = in(reg) bits, options(nostack)),
-            0x344 => core::arch::asm!("csrs mip, {b}", b = in(reg) bits, options(nostack)),
-            0x104 => core::arch::asm!("csrs sie, {b}", b = in(reg) bits, options(nostack)),
-            0x100 => core::arch::asm!("csrs sstatus, {b}", b = in(reg) bits, options(nostack)),
-            _ => {}
-        }
-    }
-}
-
-fn csr_clear(csr: u32, bits: usize) {
-    unsafe {
-        match csr {
-            0x304 => core::arch::asm!("csrc mie, {b}", b = in(reg) bits, options(nostack)),
-            0x344 => core::arch::asm!("csrc mip, {b}", b = in(reg) bits, options(nostack)),
-            _ => {}
-        }
-    }
-}
-
+/// C906 compares `mtime` to the live 64-bit `mtimecmp`. `THeadClint::write_mtimecmp`
+/// writes lo then hi, which can match too early. Keep the three 32-bit stores.
 fn write_mtimecmp(next: u64) {
     unsafe {
         write_volatile(MTIMECMPH as *mut u32, u32::MAX);
@@ -428,23 +392,29 @@ fn write_mtimecmp(next: u64) {
 
 fn sbi_set_timer_m(next: u64) {
     write_mtimecmp(next);
-    csr_clear(0x344, MIP_STIP);
-    csr_set(0x304, MIE_MTIE);
+    unsafe {
+        mip::clear_stimer();
+        mie::set_mtimer();
+    }
 }
 
 fn handle_m_timer() {
-    csr_set(0x344, MIP_STIP);
-    csr_clear(0x304, MIE_MTIE);
+    unsafe {
+        mip::set_stimer();
+        mie::clear_mtimer();
+    }
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn trap_handle(a0: usize, a7: usize, mcause: usize) -> usize {
-    if mcause == CAUSE_M_TIMER {
+extern "C" fn trap_handle(a0: usize, a7: usize, cause: usize) -> usize {
+    if cause == CAUSE_M_TIMER {
         handle_m_timer();
         return a0;
     }
-    if mcause != CAUSE_ECALL_S {
-        uart3_puts("[M] trap\r\n");
+    if cause != CAUSE_ECALL_S {
+        uart3_puts("[M] trap ");
+        uart3_put_hex(cause);
+        uart3_puts("\r\n");
         hang();
     }
     bump_mepc();
@@ -469,11 +439,7 @@ extern "C" fn trap_handle(a0: usize, a7: usize, mcause: usize) -> usize {
 }
 
 fn rdtime() -> u64 {
-    let t: u64;
-    unsafe {
-        core::arch::asm!("rdtime {t}", t = out(reg) t, options(nomem, nostack));
-    }
-    t
+    time::read64()
 }
 
 fn sbi_putchar(c: u8) {
@@ -534,8 +500,8 @@ fn s_print_tick(n: u8) {
 static mut TICKS: u8 = 0;
 
 #[unsafe(no_mangle)]
-extern "C" fn trap_s_handle(scause: usize) {
-    if scause != CAUSE_S_TIMER {
+extern "C" fn trap_s_handle(cause: usize) {
+    if cause != CAUSE_S_TIMER {
         s_puts("[S] trap\r\n");
         hang();
     }
@@ -553,16 +519,18 @@ extern "C" fn trap_s_handle(scause: usize) {
 #[unsafe(no_mangle)]
 extern "C" fn s_main() -> ! {
     s_puts("[S] hello via sbi\r\n");
-    let stvec = trap_s as *const () as usize;
+    let mut vec = stvec::Stvec::from_bits(0);
+    vec.set_address(trap_s as *const () as usize);
+    vec.set_trap_mode(stvec::TrapMode::Direct);
     unsafe {
-        core::arch::asm!("csrw stvec, {v}", v = in(reg) stvec, options(nostack));
+        stvec::write(vec);
+        sie::set_stimer();
     }
-    csr_set(0x104, SIE_STIE);
     sbi_set_timer(rdtime() + TICK_INTERVAL);
-    csr_set(0x100, SSTATUS_SIE);
+    unsafe {
+        sstatus::set_sie();
+    }
     loop {
-        unsafe {
-            core::arch::asm!("wfi", options(nostack));
-        }
+        asm::wfi();
     }
 }

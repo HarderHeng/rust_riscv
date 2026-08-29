@@ -26,6 +26,7 @@ rcore-bl808/
 ```toml
 bouffalo-hal = { git = "https://github.com/rustsbi/bouffalo-hal", rev = "ea477a96…" }
 bouffalo-rt  = { git = "https://github.com/rustsbi/bouffalo-hal", rev = "ea477a96…", default-features = false }
+xuantie-riscv = { git = "https://github.com/rustsbi/xuantie", rev = "fe7ec712" }
 ```
 
 M0 feature：`bl808-mcu`。D0 feature：`bl808-dsp`。`blri` 由 `build.sh` 按同一 `rev` `cargo install` 到 `target/host-tools/`。
@@ -43,6 +44,14 @@ M0 把 D0 入口写成 0x58000000，SF_CTRL group1 offset = 0x101000
 D0 从 0x58000000 取指（对应 Flash 0x100000 后面那份 payload）
 ```
 
+打好的 Flash 镜像默认用 `dd` 拷到 Windows（不要 `cp`）：
+
+| 用途 | 目录 | 文件 |
+|------|------|------|
+| 默认 D0 | `C:\bl808_sbi0\` | `rust-helloworld-m0.bin` @ `0x0`，`sbi0.bin` @ `0x100000` |
+| helloworld 对照 | `C:\bl808_helloworld\` | m0 + `rust-helloworld-d0.bin` |
+| stage0 对照 | `C:\bl808_stage0\` | m0 + `stage0.bin` |
+
 USB-UART（板上 BL702）：
 
 | 口 | 典型设备 | 接到 |
@@ -57,7 +66,7 @@ M0 的 UART0（GPIO14/15）在 WSL 上通常看不到。D0 打出 `ipc synced` �
 `bouffalo-rt` `_start`：设栈、清 BSS、拷 `.data`、trap、PMP，然后 `main`。  
 **不做** C SDK 的 `SystemInit` / `board_init`（cache、UART 时钟树、mtimer）。
 
-因此板级代码自己补：
+因此板级代码自己补 HAL / `xuantie-riscv` / `riscv` 没有或不能用的部分：
 
 | 缺口 | 写在 |
 |------|------|
@@ -66,10 +75,12 @@ M0 的 UART0（GPIO14/15）在 WSL 上通常看不到。D0 打出 `ipc synced` �
 | UART3 波特率时钟 | D0 的 `Uart3Xclk`（HAL 写死 160 MHz） |
 | 拉 D0 + IPC + dcache clean | `helloworld-m0` `start_d0_core` |
 | 等 IPC + dcache invalidate | `helloworld-d0` `wait_for_m0` |
-| I-cache | 两核 `enable_icache`（MHCR `0x7C1`，`icache.iall`） |
+| I-cache | `sbi0` 用 `xuantie-riscv`（`icache_iall` + `mhcr::set_ie`）；helloworld / stage0 仍是手搓 |
+| D0 mtimer 1 MHz | `sbi0` `0x30000018`（HAL 没有 `CPU_RTC`） |
+| `mtimecmp` | `sbi0` 三拍 32 位写（不用 `THeadClint::write_mtimecmp`） |
 | 5 秒延时 | `rdcycle`，按 320 MHz |
 
-GPIO、UART 引脚复用、`freerun` 用 HAL。
+GPIO、UART 引脚复用、`freerun`、M 态 UART3 FIFO（`uart::RegisterBlock`）、CSR（`riscv`）用生态。
 
 ## M0 启动顺序
 
@@ -122,15 +133,16 @@ GPIO、UART 引脚复用、`freerun` 用 HAL。
 
 ## sbi0
 
-`sbi0/src/main.rs`。M 态前缀与 stage0 相同：UART3 XCLK 40 MHz、IPC、I-cache、PMP 全开。
+`sbi0/src/main.rs`。M 态前缀与 stage0 相同：UART3 XCLK 40 MHz、IPC、I-cache、PMP 全开。能走 HAL / `xuantie-riscv` / `riscv` 的已经接上。
 
 陷阱与委托：
 
-- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg = 1<<5`（只委托 S 态时钟）。`enter_s_mode` 置 `MPIE`，进 S 态后 `MIE=1`。
+- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg` 只委托 S 态时钟。`mcounteren.TM=1`，否则 S 态 `rdtime` 非法指令。`enter_s_mode` 置 `MPIE`，进 S 态后 `MIE=1`。
 - 开 D0 mtimer：`0x30000018`，`div=319`（DSP 320 MHz → 1 MHz）。`mtimecmp` 在 `0xE4004000/4`，按 32 位写。
 - S 态 `ecall`：`a7=0` set_timer，`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。
-- M 态 `trap_handle`：`mcause==9` 才 `mepc+=4` 再分发；机器时钟 `(1<<63)|7` 置 `STIP`、关 `MTIE`，不改 `mepc`。
-- S 态 `stvec=trap_s`，5 次 200 ms tick 后 shutdown。
+- M 态 FIFO 用 HAL `uart::RegisterBlock`。`mcause` 用入口读到的原值比较（不要 `Mcause::from_bits`）。
+- M 态 `trap_handle`：S 态 `ecall` 才 `mepc+=4` 再分发；机器时钟置 `STIP`、关 `MTIE`，不改 `mepc`。
+- S 态 `stvec=trap_s`，5 次 200 ms tick 后 shutdown。2026-08-29 已在 ACM0 打出。
 - 其它 M 态 `mcause` 打 `[M] trap`；其它 `a7` 打 `[M] bad sbi`。
 
 ## 镜像打包

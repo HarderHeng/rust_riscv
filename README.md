@@ -44,7 +44,7 @@ flash_m1s.sh -y \
   --d0 target/riscv64imac-unknown-none-elf/release/sbi0.bin
 ```
 
-期望 ACM0 输出（时钟 tick 待上板验证）：
+期望 ACM0 输出（第 3 章时钟已在板上打出）：
 
 ```text
 rust helloworld from D0/C906, uart up

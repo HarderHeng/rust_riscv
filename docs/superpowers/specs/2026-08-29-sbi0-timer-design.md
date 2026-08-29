@@ -90,4 +90,4 @@ S 态仍禁止写 UART FIFO。
 
 ## 文档
 
-上板通过后再改 `docs/chapter-status.md` 第 3 章。实现过程中改 `docs/architecture.md` / `AGENTS.md` / `README.md` 期望输出。
+2026-08-29 板上已打出 5 次 tick 和 shutdown。第 3 章见 `docs/chapter-status.md`。

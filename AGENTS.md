@@ -12,9 +12,24 @@ E907 没有 MMU，不能跑 rCore。M0 只负责拉起 D0。
 ## 依赖
 
 - `bouffalo-hal` / `bouffalo-rt` / `blri` 只用 `Cargo.toml` 里的 **git + rev**，或 `scripts/build.sh` 里同一组 `HAL_GIT` / `HAL_REV`。
+- `xuantie-riscv` 用 workspace 里与 `bouffalo-rt` 相同的 git + rev（`fe7ec712`）。
 - **禁止** `path = "../bouffalo-hal"` 这类仓库外本地路径。
 - 不要改旁边 checkout 的 `bouffalo-hal` 来“顺手修 HAL”。板级缺口写在本仓库。
 - 升级 HAL 时同时改 workspace `rev` 和 `build.sh` 的 `HAL_REV`。
+
+## 优先用生态，缺口再手搓
+
+能调 HAL / `bouffalo-rt` / `xuantie-riscv` / `riscv` 的就调，不要再写一遍同样的 CSR、cache 指令、UART FIFO。
+
+**现在有、要用的：** GPIO、UART 引脚 / `freerun`、HAL `uart::RegisterBlock`（M 态 FIFO）、`xuantie-riscv` 的 `icache_iall` / `dcache_ipa` / `mhcr::set_ie`、`riscv` 的 CSR 与 `wfi`/`fence`。
+
+**HAL 没有或不能用、才手搓：**
+
+- DSP UART 时钟（`MM_CLK_CTRL_*`）。`glb/mm.rs` 只有残缺的 CPU 时钟位，不能替代 `GLB_Set_DSP_UART0_CLK`。
+- D0 `CPU_RTC` / `0x30000018`（`CPU_Set_MTimer_CLK`）。
+- `mtimecmp` 三拍 32 位写。`THeadClint::write_mtimecmp` 先 lo 后 hi，C906 上会误触发。
+- UART3 波特率时钟：`Uart3Xclk` 按 XCLK 40 MHz。HAL 写死 160 MHz。
+- IPC 的 `dcache.cpa`：HAL `l1c_dcache_clean_range` 会跳过 `0x40000000`。
 
 ## 硬件与烧录
 
@@ -24,6 +39,11 @@ E907 没有 MMU，不能跑 rCore。M0 只负责拉起 D0。
 - 烧录口：编号最大的 `/dev/ttyACM*`（常见 `ttyACM1`）。看 D0 日志用 `ttyACM0`，`2000000 8N1`。
 - **不要把 ACM1 当控制台。** 打开它会拨 DTR，干扰运行中的核。
 - 不要用 Ox64 / 其它板的地址套到 M1s 上。
+- **打好镜像后默认拷到 Windows 烧录，不要等用户再叫一声。** 用 `dd`（`bs=4096`），**不要 `cp`**：`/mnt/c` 上 `cp` 会把 bin 当文本改坏。拷完核头 4 字节是 `BFNP`。
+  - 默认 D0（sbi0）：`C:\bl808_sbi0\` ← `rust-helloworld-m0.bin` @ `0x0`，`sbi0.bin` @ `0x100000`
+  - helloworld 对照：`C:\bl808_helloworld\`
+  - stage0 对照：`C:\bl808_stage0\`
+- Windows DevCube：IOT **Single Download**，Partition / Boot2 / Erase All **关**。不要填 `0xD2000` 或 XIP `0x58000000`。
 
 ## 镜像
 
@@ -38,9 +58,9 @@ BootROM 认 `flag` 里的 hash。header 对不上就整片沉默，不像“程�
 - 拉 D0：对照 C `start_d0_core`。IPC 写在 `0x40000000/0x40000004`，**先写后 `dcache.cpa`，再放复位**。不要调用 HAL 的 `l1c_dcache_clean_range`（它会跳过这段地址）。
 - D0 等 IPC 时 `dcache.ipa`。开 I-cache 放在 IPC 之后，和 C `SystemInit` 一样。
 - 时钟：镜像头 MCU/DSP 都是 WiFi PLL **320 MHz**。我们没有跑 C 的 `GLB_Set_DSP_System_CLK(400M)`。
-- 板级 MMIO 用常量 + `read_volatile`/`write_volatile`，并在注释里写清对照的 C 函数。
+- 手搓的板级 MMIO 用常量 + `read_volatile`/`write_volatile`，并在注释里写清对照的 C 函数。有 HAL 寄存器类型就用类型，不要再解偏移。
 - UART 行尾必须是 `\r\n`。不要用只加 `\n` 的 `writeln!`，终端否则不会回列首。
-- **sbi0（默认 D0 路径）**：S 态输出必须走旧版 SBI `ecall`（`a7=0` set_timer，`a7=1` putchar，`a7=8` shutdown）；禁止 S 态写 `0x30002000+0x88`。只有 M 态陷阱路径写 UART3 FIFO。`mepc+=4` 只用于 `ecall`，中断不要加。D0 mtimer：`0x30000018` div=319；`mtimecmp` `0xE4004000`。
+- **sbi0（默认 D0 路径）**：S 态输出必须走旧版 SBI `ecall`（`a7=0` set_timer，`a7=1` putchar，`a7=8` shutdown）；禁止 S 态写 `0x30002000+0x88`。只有 M 态陷阱路径写 UART3 FIFO。`mepc+=4` 只用于 `ecall`，中断不要加。D0 mtimer：`0x30000018` div=319；`mtimecmp` `0xE4004000`。进 S 态前必须 `mcounteren.TM=1`，否则 S 态 `rdtime` 是非法指令。`mcause` 用陷阱入口读到的原值比较，不要用 `riscv` 的 `Mcause::from_bits`（mask 只有 32 位，会丢掉中断位）。
 - **stage0 对照**：仍由 S 态直接写 UART3 FIFO，不要为 sbi0 改 stage0。
 - 这一期 PMP 全开（`pmpaddr0=-1`，`pmpcfg0=0x1F`）。不要在没验证 `[S]` 之前改回细粒度。
 - 不要改 helloworld 或 stage0 来“顺便”做 sbi0。
