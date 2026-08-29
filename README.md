@@ -44,7 +44,7 @@ flash_m1s.sh -y \
   --d0 target/riscv64imac-unknown-none-elf/release/sbi0.bin
 ```
 
-ACM0 已在 M1s 上打出：
+期望 ACM0 输出（时钟 tick 待上板验证）：
 
 ```text
 rust helloworld from D0/C906, uart up
@@ -52,6 +52,11 @@ rust helloworld from D0/C906, ipc synced
 rust helloworld from D0/C906, icache on
 [M] sbi0 entering S-mode
 [S] hello via sbi
+[S] tick 1
+[S] tick 2
+[S] tick 3
+[S] tick 4
+[S] tick 5
 [M] shutdown
 ```
 

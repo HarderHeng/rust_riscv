@@ -126,10 +126,12 @@ GPIO、UART 引脚复用、`freerun` 用 HAL。
 
 陷阱与委托：
 
-- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg=0`，关 `mie`/`sie`。
-- S 态只 `ecall`：`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。
-- M 态 `trap_handle`：`mcause==9` 时按 `a7` 分发；putchar 写 `0x30002000+0x88`（等 `+0x84[5:0] != 0`）；shutdown 打 `[M] shutdown\r\n` 后空转。
-- 其它 `mcause` 打 `[M] trap`；其它 `a7` 打 `[M] bad sbi`。
+- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg = 1<<5`（只委托 S 态时钟）。`enter_s_mode` 置 `MPIE`，进 S 态后 `MIE=1`。
+- 开 D0 mtimer：`0x30000018`，`div=319`（DSP 320 MHz → 1 MHz）。`mtimecmp` 在 `0xE4004000/4`，按 32 位写。
+- S 态 `ecall`：`a7=0` set_timer，`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。
+- M 态 `trap_handle`：`mcause==9` 才 `mepc+=4` 再分发；机器时钟 `(1<<63)|7` 置 `STIP`、关 `MTIE`，不改 `mepc`。
+- S 态 `stvec=trap_s`，5 次 200 ms tick 后 shutdown。
+- 其它 M 态 `mcause` 打 `[M] trap`；其它 `a7` 打 `[M] bad sbi`。
 
 ## 镜像打包
 

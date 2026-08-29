@@ -14,6 +14,7 @@ if [[ -z "$OBJDUMP" ]]; then OBJDUMP="$(command -v llvm-objdump-18 || true)"; fi
 "$NM" "$ELF" | grep ' s_main$' >/dev/null || { echo "ELF missing s_main" >&2; exit 1; }
 "$NM" "$ELF" | grep ' trap_m$' >/dev/null || { echo "ELF missing trap_m" >&2; exit 1; }
 "$NM" "$ELF" | grep ' trap_handle$' >/dev/null || { echo "ELF missing trap_handle" >&2; exit 1; }
+"$NM" "$ELF" | grep ' trap_s$' >/dev/null || { echo "ELF missing trap_s" >&2; exit 1; }
 "$OBJDUMP" -d "$ELF" | grep -E '[[:space:]]mret' >/dev/null || { echo "ELF missing mret" >&2; exit 1; }
 "$OBJDUMP" -d "$ELF" | grep -E '[[:space:]]ecall' >/dev/null || { echo "ELF missing ecall" >&2; exit 1; }
 echo "check-sbi0 ok"
