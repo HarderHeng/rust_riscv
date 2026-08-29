@@ -61,6 +61,7 @@ BootROM 认 `flag` 里的 hash。header 对不上就整片沉默，不像“程�
 - 手搓的板级 MMIO 用常量 + `read_volatile`/`write_volatile`，并在注释里写清对照的 C 函数。有 HAL 寄存器类型就用类型，不要再解偏移。
 - UART 行尾必须是 `\r\n`。不要用只加 `\n` 的 `writeln!`，终端否则不会回列首。
 - **sbi0（默认 D0 路径）**：S 态输出必须走旧版 SBI `ecall`（`a7=0` set_timer，`a7=1` putchar，`a7=8` shutdown）；禁止 S 态写 `0x30002000+0x88`。只有 M 态陷阱路径写 UART3 FIFO。`mepc+=4` 只用于 `ecall`，中断不要加。D0 mtimer：`0x30000018` div=319；`mtimecmp` `0xE4004000`。进 S 态前必须 `mcounteren.TM=1`，否则 S 态 `rdtime` 是非法指令。`mcause` 用陷阱入口读到的原值比较，不要用 `riscv` 的 `Mcause::from_bits`（mask 只有 32 位，会丢掉中断位）。
+- 第 4 章：M 态 HAL `init_psram` + TZC 清 `0x20005000+0x380` bit16，冒烟 `0x50001000`。S 态 hello 之后才写 `satp`；根页表 `0x50000000`，两条 1GB 叶 `0xC7`。不要开 `SIE`。页表用 `dcache_cpal1` 清缓存。不要抄 UHS PLL，除非 `[M] psram fail` 后再开一轮。
 - **stage0 对照**：仍由 S 态直接写 UART3 FIFO，不要为 sbi0 改 stage0。
 - 这一期 PMP 全开（`pmpaddr0=-1`，`pmpcfg0=0x1F`）。不要在没验证 `[S]` 之前改回细粒度。
 - 不要改 helloworld 或 stage0 来“顺便”做 sbi0。

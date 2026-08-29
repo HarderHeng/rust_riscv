@@ -1,6 +1,6 @@
 # 内存图
 
-地址来自 BL808 手册、本工作区 Linux `low_load`，以及 `bouffalo-rt` 的链接脚本。helloworld **还没有**启用 PSRAM；两核都在 XIP + 核内 SRAM 上跑。
+地址来自 BL808 手册、本工作区 Linux `low_load`，以及 `bouffalo-rt` 的链接脚本。helloworld / stage0 还没有启用 PSRAM；**sbi0 在 M 态 `init_psram` 之后用 `0x50000000` 放根页表（4KiB），冒烟在 `0x50001000`**。两核代码仍在 XIP 上跑。
 
 ## C906 能看到的窗口（Linux 参照）
 

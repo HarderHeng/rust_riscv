@@ -137,13 +137,11 @@ GPIO、UART 引脚复用、`freerun`、M 态 UART3 FIFO（`uart::RegisterBlock`�
 
 陷阱与委托：
 
-- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg` 只委托 S 态时钟。`mcounteren.TM=1`，否则 S 态 `rdtime` 非法指令。`enter_s_mode` 置 `MPIE`，进 S 态后 `MIE=1`。
-- 开 D0 mtimer：`0x30000018`，`div=319`（DSP 320 MHz → 1 MHz）。`mtimecmp` 在 `0xE4004000/4`，按 32 位写。
-- S 态 `ecall`：`a7=0` set_timer，`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。
-- M 态 FIFO 用 HAL `uart::RegisterBlock`。`mcause` 用入口读到的原值比较（不要 `Mcause::from_bits`）。
-- M 态 `trap_handle`：S 态 `ecall` 才 `mepc+=4` 再分发；机器时钟置 `STIP`、关 `MTIE`，不改 `mepc`。
-- S 态 `stvec=trap_s`，5 次 200 ms tick 后 shutdown。2026-08-29 已在 ACM0 打出。
-- 其它 M 态 `mcause` 打 `[M] trap`；其它 `a7` 打 `[M] bad sbi`。
+- `mtvec = trap_m`（direct），`medeleg=0`，`mideleg` 只委托 S 态时钟。`mcounteren.TM=1`。`enter_s_mode` 置 `MPIE`，并把 `satp` 清 0。
+- 开 D0 mtimer：`0x30000018`，`div=319`。`mtimecmp` 三拍 32 位写。
+- M 态在 `mret` 前：HAL `init_psram`，TZC `0x20005000+0x380` 清 bit 16，冒烟 `0x50001000`。失败打 `[M] psram fail` 并停，不要进 S。
+- S 态 `ecall`：`a7=0` set_timer（保留），`a7=1` putchar，`a7=8` shutdown。不写 UART FIFO。hello 之后在 `0x50000000` 建两条 1GB 恒等叶，`satp=Sv39`。这一章 **不要**开 `SIE`。
+- M 态 FIFO 用 HAL `uart::RegisterBlock`。`mcause` 用入口原值比较。
 
 ## 镜像打包
 
