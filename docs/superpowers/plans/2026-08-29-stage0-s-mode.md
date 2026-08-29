@@ -298,7 +298,8 @@ fn enter_s_mode(dest: extern "C" fn() -> !) -> ! {
 
 fn uart3_putb(b: u8) {
     unsafe {
-        while (read_volatile(UART_FIFO_CONFIG_1 as *const u32) & 0x3F) >= 32 {
+        // UART_FIFO_CONFIG_1[5:0] is TX free space (empty == 32). Wait while full.
+        while (read_volatile(UART_FIFO_CONFIG_1 as *const u32) & 0x3F) == 0 {
             core::hint::spin_loop();
         }
         write_volatile(UART_FIFO_WDATA as *mut u32, b as u32);
