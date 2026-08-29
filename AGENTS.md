@@ -40,8 +40,8 @@ BootROM 认 `flag` 里的 hash。header 对不上就整片沉默，不像“程�
 - 时钟：镜像头 MCU/DSP 都是 WiFi PLL **320 MHz**。我们没有跑 C 的 `GLB_Set_DSP_System_CLK(400M)`。
 - 板级 MMIO 用常量 + `read_volatile`/`write_volatile`，并在注释里写清对照的 C 函数。
 - UART 行尾必须是 `\r\n`。不要用只加 `\n` 的 `writeln!`，终端否则不会回列首。
-- S 态输出必须走旧版 SBI `ecall`（`a7=1` putchar，`a7=8` shutdown）。禁止 S 态写 `0x30002000+0x88`。
-- 只有 M 态陷阱路径写 UART3 FIFO。行尾 `\r\n`。
+- **sbi0（默认 D0 路径）**：S 态输出必须走旧版 SBI `ecall`（`a7=1` putchar，`a7=8` shutdown）；禁止 S 态写 `0x30002000+0x88`。只有 M 态陷阱路径写 UART3 FIFO，行尾 `\r\n`。
+- **stage0 对照**：仍由 S 态直接写 UART3 FIFO，不要为 sbi0 改 stage0。
 - 这一期 PMP 全开（`pmpaddr0=-1`，`pmpcfg0=0x1F`）。不要在没验证 `[S]` 之前改回细粒度。
 - 不要改 helloworld 或 stage0 来“顺便”做 sbi0。
 

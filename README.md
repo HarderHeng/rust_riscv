@@ -44,6 +44,8 @@ flash_m1s.sh -y \
   --d0 target/riscv64imac-unknown-none-elf/release/sbi0.bin
 ```
 
+期望 ACM0 输出（待上板验证）：
+
 ```text
 rust helloworld from D0/C906, uart up
 rust helloworld from D0/C906, ipc synced
