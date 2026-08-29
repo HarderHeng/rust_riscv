@@ -1,0 +1,3 @@
+[workspace]
+members = ["helloworld-m0", "helloworld-d0"]
+resolver = "3"

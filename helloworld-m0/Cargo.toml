@@ -1,0 +1,21 @@
+[package]
+name = "rust-helloworld-m0"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bouffalo-hal = { path = "../../bouffalo-hal/bouffalo-hal", features = ["bl808"] }
+panic-halt = "1.0.0"
+riscv = "0.13.0"
+embedded-time = "0.12.1"
+
+[dependencies.bouffalo-rt]
+path = "../../bouffalo-hal/bouffalo-rt"
+default-features = false
+features = ["bl808-mcu"]
+
+[[bin]]
+name = "rust-helloworld-m0"
+test = false
+bench = false
