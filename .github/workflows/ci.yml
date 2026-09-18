@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-09-17
+          targets: riscv32imac-unknown-none-elf
+          components: rustfmt, llvm-tools-preview, rust-src
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Kernel host tests
+        run: cargo test -p kernel --target x86_64-unknown-linux-gnu --lib
+
+      - name: Check qemu-virt-rv32 release
+        run: cargo check -p qemu-virt-rv32 --release
+
+      - name: Check qemu-virt-rv32 release (virtio-console)
+        run: cargo check -p qemu-virt-rv32 --release --features virtio-console
+
+      - name: Build qemu-virt-rv32 release
+        run: cargo build -p qemu-virt-rv32 --release
+
+      - name: Soft llvm-size report
+        run: |
+          ELF="target/riscv32imac-unknown-none-elf/release/qemu-virt-rv32"
+          if command -v llvm-size >/dev/null 2>&1; then
+            echo "=== llvm-size (qemu-virt-rv32 release) ==="
+            llvm-size "$ELF" || true
+          elif [ -x "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size" ]; then
+            echo "=== sysroot llvm-size (qemu-virt-rv32 release) ==="
+            "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size" "$ELF" || true
+          else
+            echo "llvm-size not found; skipping size report"
+          fi
+
+  qemu-smoke:
+    name: qemu-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-misc
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-09-17
+          targets: riscv32imac-unknown-none-elf
+          components: rust-src, llvm-tools-preview
+
+      - name: Build qemu-virt-rv32 release
+        run: cargo build -p qemu-virt-rv32 --release
+
+      - name: Run QEMU smoke test
+        run: python3 scripts/qemu_smoke_test.py target/riscv32imac-unknown-none-elf/release/qemu-virt-rv32
