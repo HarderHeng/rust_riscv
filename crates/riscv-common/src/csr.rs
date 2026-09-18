@@ -243,6 +243,11 @@ pub unsafe fn enable_interrupts() {
 }
 
 /// Disable machine interrupts globally.
+///
+/// # Safety
+///
+/// Caller must ensure it is safe to mask interrupts at this point (for example,
+/// not holding a lock that an interrupt handler needs to make progress).
 #[inline]
 pub unsafe fn disable_interrupts() {
     csr_clear!(mstatus, mstatus::MIE);

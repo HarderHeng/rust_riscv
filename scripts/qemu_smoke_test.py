@@ -80,8 +80,13 @@ def main():
 
     try:
         read_until(process, output, PROMPT, args.timeout)
-        process.stdin.write(COMMAND)
-        process.stdin.flush()
+        # Let the guest reach wfi after printing the prompt. A burst write in the
+        # same instant can be lost on QEMU virt UART; pace stdin instead.
+        time.sleep(0.05)
+        for byte in COMMAND:
+            process.stdin.write(bytes([byte]))
+            process.stdin.flush()
+            time.sleep(0.005)
         read_until(process, output, EXPECTED_RESPONSE, args.timeout)
     except (OSError, RuntimeError, TimeoutError) as error:
         captured = bytes(output[-2000:]).decode("utf-8", "replace")

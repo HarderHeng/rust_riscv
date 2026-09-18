@@ -81,8 +81,9 @@ impl SerialPort for Uart16550a {
 
         // LCR = 0x03: 8 data bits (bits 1-0=11), no parity (bit 3=0), 1 stop bit (bit 2=0), DLAB cleared (bit 7=0)
         self.write(reg::LCR, 0x03);
-        // FCR = 0xC7: enable FIFO (bit 0=1), clear RX FIFO (bit 1=1), clear TX FIFO (bit 2=1), trigger level 14 bytes (bits 7-6=11)
-        self.write(reg::FCR, 0xC7);
+        // FCR = 0x07: enable FIFO, clear RX/TX FIFOs, RX trigger level 1 byte (bits 7-6=00).
+        // A 14-byte trigger delays IRQs for short interactive input.
+        self.write(reg::FCR, 0x07);
         // MCR = 0x03: assert DTR (bit 0=1) + RTS (bit 1=1)
         self.write(reg::MCR, 0x03);
     }
