@@ -47,17 +47,31 @@ jobs:
       - name: Build qemu-virt-rv32 release
         run: cargo build -p qemu-virt-rv32 --release
 
-      - name: Soft llvm-size report
+      - name: Text size gate (qemu-virt-rv32 release)
         run: |
+          set -euo pipefail
           ELF="target/riscv32imac-unknown-none-elf/release/qemu-virt-rv32"
+          # Berkeley `text` (~.text+.rodata). Current ~20242; 24KiB leaves headroom.
+          MAX_TEXT=24576
           if command -v llvm-size >/dev/null 2>&1; then
-            echo "=== llvm-size (qemu-virt-rv32 release) ==="
-            llvm-size "$ELF" || true
+            SIZE_BIN="$(command -v llvm-size)"
           elif [ -x "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size" ]; then
-            echo "=== sysroot llvm-size (qemu-virt-rv32 release) ==="
-            "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size" "$ELF" || true
+            SIZE_BIN="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size"
           else
-            echo "llvm-size not found; skipping size report"
+            echo "llvm-size not found" >&2
+            exit 1
+          fi
+          echo "=== llvm-size (qemu-virt-rv32 release) ==="
+          "$SIZE_BIN" "$ELF"
+          TEXT="$("$SIZE_BIN" "$ELF" | awk 'NR==2 {print $1; exit}')"
+          echo "text=$TEXT max=$MAX_TEXT"
+          if ! [[ "$TEXT" =~ ^[0-9]+$ ]]; then
+            echo "could not parse text size from llvm-size output" >&2
+            exit 1
+          fi
+          if [ "$TEXT" -gt "$MAX_TEXT" ]; then
+            echo "text size $TEXT exceeds budget $MAX_TEXT" >&2
+            exit 1
           fi
 
   qemu-smoke:
