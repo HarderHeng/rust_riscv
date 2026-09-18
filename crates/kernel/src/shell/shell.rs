@@ -7,7 +7,7 @@
 //! - Line editing support
 
 use core::fmt;
-use heapless::{String, Vec};
+use heapless::Vec;
 
 /// Maximum length of input buffer
 const INPUT_BUFFER_SIZE: usize = 256;
@@ -203,70 +203,59 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
         }
     }
 
-    /// Parse command line into command and arguments
+    /// Parse the current input line and dispatch the command.
     ///
-    /// Returns (command_name, arguments) or None if line is empty.
-    /// The strings are copied to avoid borrow checker issues.
-    fn parse_command_line(&self) -> Option<(String<32>, Vec<String<64>, MAX_ARGS>)> {
+    /// Tokenizes to `&str` slices that borrow `input_buffer` directly (no
+    /// `heapless::String` copies). Field destructuring keeps the buffer
+    /// borrow disjoint from `&mut io` / the command table.
+    fn dispatch_line(&mut self) {
         if self.input_len == 0 {
-            return None;
+            return;
         }
 
-        // Convert input buffer to string
-        let input = core::str::from_utf8(&self.input_buffer[..self.input_len]).ok()?;
+        let Shell {
+            io,
+            input_buffer,
+            input_len,
+            commands,
+            ..
+        } = self;
 
-        // Split by whitespace and collect into Vec
-        let mut tokens: Vec<String<64>, MAX_ARGS> = Vec::new();
+        let Ok(input) = core::str::from_utf8(&input_buffer[..*input_len]) else {
+            return;
+        };
+
+        let mut tokens: Vec<&str, MAX_ARGS> = Vec::new();
         for token in input.split_whitespace() {
-            if let Ok(s) = String::try_from(token) {
-                if tokens.push(s).is_err() {
-                    // Too many arguments
-                    break;
-                }
+            if tokens.push(token).is_err() {
+                // Too many arguments — drop the rest
+                break;
             }
         }
-
         if tokens.is_empty() {
-            return None;
+            return;
         }
 
-        let cmd: String<32> = tokens[0].as_str().try_into().ok()?;
-        let args = tokens[1..].iter().cloned().collect::<Vec<_, MAX_ARGS>>();
+        let cmd_name = tokens[0];
+        let args = &tokens[1..];
 
-        Some((cmd, args))
-    }
-
-    /// Lookup command by name
-    ///
-    /// Uses binary search on sorted command registry.
-    fn find_command(&self, name: &str) -> Option<&Command> {
-        self.commands
-            .binary_search_by(|cmd| cmd.name.cmp(name))
-            .ok()
-            .map(|idx| &self.commands[idx])
-    }
-
-    /// Execute a command
-    fn execute_command(&mut self, cmd_name: &str, args: &[String<64>]) {
-        match self.find_command(cmd_name) {
-            Some(cmd) => {
-                // Convert String<64> to &str for the handler
-                let arg_refs: Vec<&str, MAX_ARGS> = args.iter().map(|s| s.as_str()).collect();
-
-                match cmd.handler.execute(arg_refs.as_slice(), &mut self.io) {
+        match commands.binary_search_by(|cmd| cmd.name.cmp(cmd_name)) {
+            Ok(idx) => {
+                let handler = commands[idx].handler;
+                match handler.execute(args, io) {
                     Ok(()) => {}
                     Err(msg) => {
-                        self.io.write_str("Error: ");
-                        self.io.write_str(msg);
-                        self.io.write_str("\r\n");
+                        io.write_str("Error: ");
+                        io.write_str(msg);
+                        io.write_str("\r\n");
                     }
                 }
             }
-            None => {
-                self.io.write_str("Command not found: ");
-                self.io.write_str(cmd_name);
-                self.io.write_str("\r\n");
-                self.io.write_str("Type 'help' for available commands.\r\n");
+            Err(_) => {
+                io.write_str("Command not found: ");
+                io.write_str(cmd_name);
+                io.write_str("\r\n");
+                io.write_str("Type 'help' for available commands.\r\n");
             }
         }
     }
@@ -280,10 +269,7 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
         while let Some(ch) = self.io.read_byte() {
             if self.process_char(ch) {
                 // Complete line received - parse and execute
-                let parse_result = self.parse_command_line();
-                if let Some((cmd, args)) = parse_result {
-                    self.execute_command(cmd.as_str(), args.as_slice());
-                }
+                self.dispatch_line();
                 self.clear_input();
                 self.show_prompt();
                 return true;

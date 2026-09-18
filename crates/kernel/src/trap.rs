@@ -82,8 +82,11 @@ pub type ClaimHandler = fn() -> u32;
 /// interrupt controller reference.
 pub type CompleteHandler = fn(irq: u32);
 
-/// Maximum number of external IRQ handlers.
-const MAX_IRQ_HANDLERS: usize = 128;
+/// Maximum number of registered external IRQ handlers.
+///
+/// Sparse storage: boards typically register only a handful of IRQs
+/// (console, virtio, …), so a small linear table beats a 128-slot dense array.
+const MAX_IRQ_ENTRIES: usize = 32;
 
 /// Storage for the software interrupt handler.
 static SOFTWARE_HANDLER: Mutex<Option<CoreHandler>> = Mutex::new(None);
@@ -91,10 +94,10 @@ static SOFTWARE_HANDLER: Mutex<Option<CoreHandler>> = Mutex::new(None);
 /// Storage for the timer interrupt handler.
 static TIMER_HANDLER: Mutex<Option<CoreHandler>> = Mutex::new(None);
 
-/// Storage for external interrupt handlers (indexed by IRQ number).
+/// Sparse table of external interrupt handlers: `(irq, handler)` pairs.
 /// IRQ 0 is reserved and should not be used.
-static IRQ_HANDLERS: Mutex<[Option<IrqHandler>; MAX_IRQ_HANDLERS]> =
-    Mutex::new([None; MAX_IRQ_HANDLERS]);
+static IRQ_HANDLERS: Mutex<heapless::Vec<(u32, IrqHandler), MAX_IRQ_ENTRIES>> =
+    Mutex::new(heapless::Vec::new());
 
 /// Storage for the interrupt claim handler.
 /// This must be set by the platform before enabling external interrupts.
@@ -151,7 +154,8 @@ pub fn unregister_timer_handler() {
 /// Registers a handler for external interrupts (MEI, code 11).
 ///
 /// # Arguments
-/// * `irq` - The IRQ number (1-127). IRQ 0 is reserved and will return an error.
+/// * `irq` - The IRQ number (non-zero). IRQ 0 is reserved and will return an error.
+///   Fails if the sparse handler table is full.
 /// * `handler` - The callback function to invoke when this IRQ fires.
 ///
 /// # Returns
@@ -169,13 +173,15 @@ pub fn register_irq_handler(irq: u32, handler: IrqHandler) -> Result<(), &'stati
     if irq == 0 {
         return Err("IRQ 0 is reserved");
     }
-    if irq >= MAX_IRQ_HANDLERS as u32 {
-        return Err("IRQ number out of range");
-    }
 
     let mut handlers = IRQ_HANDLERS.lock();
-    handlers[irq as usize] = Some(handler);
-    Ok(())
+    if let Some(entry) = handlers.iter_mut().find(|(n, _)| *n == irq) {
+        entry.1 = handler;
+        return Ok(());
+    }
+    handlers
+        .push((irq, handler))
+        .map_err(|_| "IRQ handler table full")
 }
 
 /// Unregisters an external interrupt handler.
@@ -191,13 +197,14 @@ pub fn unregister_irq_handler(irq: u32) -> Result<(), &'static str> {
     if irq == 0 {
         return Err("IRQ 0 is reserved");
     }
-    if irq >= MAX_IRQ_HANDLERS as u32 {
-        return Err("IRQ number out of range");
-    }
 
     let mut handlers = IRQ_HANDLERS.lock();
-    handlers[irq as usize] = None;
-    Ok(())
+    if let Some(idx) = handlers.iter().position(|(n, _)| *n == irq) {
+        handlers.swap_remove(idx);
+        Ok(())
+    } else {
+        Ok(())
+    }
 }
 
 /// Registers the platform's interrupt claim handler.
@@ -255,7 +262,7 @@ core::arch::global_asm!(
     // Save all registers to stack (32 words = 128 bytes)
     "    addi sp, sp, -128",
     "    sw x1,   0(sp)",  // ra
-    "    sw x2,   4(sp)",  // sp (original value before addi)
+    "    sw x2,   4(sp)",  // sp AFTER addi (frame pointer); not the pre-trap SP
     "    sw x3,   8(sp)",  // gp
     "    sw x4,  12(sp)",  // tp
     "    sw x5,  16(sp)",  // t0
@@ -325,7 +332,7 @@ core::arch::global_asm!(
     "    lw x29, 112(sp)",
     "    lw x30, 116(sp)",
     "    lw x31, 120(sp)",
-    "    lw x2,   4(sp)", // sp last
+    "    lw x2,   4(sp)", // reload post-addi sp (no-op vs current); then addi below
     "    addi sp, sp, 128",
     // Return from trap
     "    mret",
@@ -413,12 +420,13 @@ pub extern "C" fn dispatch_clic_irq(irq: usize) {
 }
 
 fn dispatch_registered_irq(irq: u32) {
-    if irq == 0 || irq >= MAX_IRQ_HANDLERS as u32 {
+    if irq == 0 {
         return;
     }
 
     let handlers = IRQ_HANDLERS.lock();
-    if let Some(handler) = handlers[irq as usize] {
+    if let Some((_, handler)) = handlers.iter().find(|(n, _)| *n == irq) {
+        let handler = *handler;
         drop(handlers);
         handler(irq);
     }

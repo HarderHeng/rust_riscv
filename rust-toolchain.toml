@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly"
+channel = "nightly-2026-09-17"
 components = ["rust-src", "llvm-tools-preview"]
 # BL808 E902/E907 use board-local `-Z build-std=core` because their
 # no-std target libraries are not distributed by rustup for this toolchain.

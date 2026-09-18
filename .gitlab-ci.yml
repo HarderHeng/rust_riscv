@@ -1,20 +1,41 @@
 stages:
   - verify
 
+# Pin the Docker image to the same dated nightly as rust-toolchain.toml.
+variables:
+  RUST_IMAGE: "rustlang/rust:nightly-2026-09-17"
+
 verify:
-  image: rust:nightly
+  image: $RUST_IMAGE
   stage: verify
   before_script:
-    - rustup component add rustfmt
+    - rustup component add rustfmt llvm-tools-preview
     - rustup target add riscv32imac-unknown-none-elf
   script:
     - cargo fmt --check
     - cargo test -p kernel --target x86_64-unknown-linux-gnu --lib
     - cargo check -p qemu-virt-rv32 --release
     - cargo check -p qemu-virt-rv32 --release --features virtio-console
+    # Soft size report (do not fail the job if llvm-size is unavailable).
+    - cargo build -p qemu-virt-rv32 --release
+    - |
+      ELF="target/riscv32imac-unknown-none-elf/release/qemu-virt-rv32"
+      if command -v llvm-size >/dev/null 2>&1; then
+        echo "=== llvm-size (qemu-virt-rv32 release) ==="
+        llvm-size "$ELF" || true
+      elif command -v rust-llvm-size >/dev/null 2>&1; then
+        echo "=== rust-llvm-size (qemu-virt-rv32 release) ==="
+        rust-llvm-size "$ELF" || true
+      elif [ -x "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size" ]; then
+        echo "=== sysroot llvm-size (qemu-virt-rv32 release) ==="
+        "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size" "$ELF" || true
+      else
+        echo "llvm-size not found; skipping size report"
+      fi
+    # BL808 boards need extra targets / build-std; skip here so CI stays green.
 
 qemu-smoke:
-  image: rust:nightly
+  image: $RUST_IMAGE
   stage: verify
   before_script:
     - apt-get update -qq

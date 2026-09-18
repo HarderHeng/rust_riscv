@@ -104,6 +104,28 @@ extern "C" fn kernel_main() -> ! {
 
 use core::panic::PanicInfo;
 
+/// Print an unsigned decimal without allocation (panic / early boot).
+fn put_usize(n: usize) {
+    use hal::{Platform, SerialPort};
+
+    if n == 0 {
+        PLATFORM.console().putc(b'0');
+        return;
+    }
+    let mut digits = [0u8; 20];
+    let mut len = 0;
+    let mut value = n;
+    while value != 0 {
+        digits[len] = b'0' + (value % 10) as u8;
+        value /= 10;
+        len += 1;
+    }
+    while len != 0 {
+        len -= 1;
+        PLATFORM.console().putc(digits[len]);
+    }
+}
+
 /// Panic handler that prints panic information to the console.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -116,7 +138,7 @@ fn panic(info: &PanicInfo) -> ! {
         PLATFORM.console().puts("Location: ");
         PLATFORM.console().puts(location.file());
         PLATFORM.console().puts(":");
-        // Note: We can't easily print line number without alloc, so skip it
+        put_usize(location.line() as usize);
         PLATFORM.console().puts("\r\n");
     }
 
