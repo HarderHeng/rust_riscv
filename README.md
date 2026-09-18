@@ -61,7 +61,7 @@ QEMU 中按 `Ctrl-A` 然后 `X` 退出。
 │       ├── bl808-e907/       # ⚠️ 真实芯片占位（RV32IMACF 应用核）
 │       └── bl808-c906/       # ⚠️ 真实芯片占位（RV64IMAC，目标 Linux）
 ├── docs/                  # 项目文档（规格 / 计划 / 架构，见下方导航）
-├── linker.ld              # 链接脚本：内存布局
+├── qemu-runner.sh         # Cargo QEMU runner
 └── Cargo.toml             # workspace 配置
 ```
 
@@ -99,7 +99,7 @@ rust-size <elf>                     # 各段大小
 
 - **内核没输出**：确认 UART 已在 `kernel_main` 开头初始化（`PLATFORM.console().init()`）。
 - **QEMU 立即退出**：`kernel_main` 不能返回，必须以死循环（Shell 的 `run()` 或 `wfi`）结尾。
-- **链接错误 / undefined symbol**：确认根目录 `linker.ld` 存在，且 `build.rs` 声明了对它的依赖。
+- **链接错误 / undefined symbol**：确认对应板级 `crates/boards/*/linker.ld` 存在，且该板的 `build.rs` 声明了对它的依赖。
 
 ## 许可
 

@@ -15,6 +15,7 @@ static PLATFORM: Bl808C906Platform = Bl808C906Platform::new();
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
     PLATFORM.console().init();
+    kernel::identity::register_platform_identity(PLATFORM.name(), PLATFORM.arch());
     PLATFORM
         .console()
         .puts("BL808 C906 (riscv64imac) - High-Performance 64-bit Core\r\n");

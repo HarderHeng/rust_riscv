@@ -148,10 +148,14 @@ pub struct VersionCommand;
 
 impl CommandHandler for VersionCommand {
     fn execute(&self, _args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
-        io.write_str("RISC-V Bare-Metal Kernel v0.1.0\r\n");
-        io.write_str("Target: riscv32imac-unknown-none-elf\r\n");
-        io.write_str("Build: ");
+        io.write_str("RISC-V Bare-Metal Kernel v");
         io.write_str(env!("CARGO_PKG_VERSION"));
+        io.write_str("\r\n");
+        io.write_str("Platform: ");
+        io.write_str(crate::identity::platform_name().unwrap_or("unknown"));
+        io.write_str("\r\n");
+        io.write_str("Arch: ");
+        io.write_str(crate::identity::platform_arch().unwrap_or("unknown"));
         io.write_str("\r\n");
         Ok(())
     }

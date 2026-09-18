@@ -222,6 +222,11 @@ impl VirtioConsole {
         }
     }
 
+    /// Public IRQ acknowledge for the board console IRQ handler.
+    pub fn ack_pending_interrupt(&self) {
+        self.ack_interrupt();
+    }
+
     fn configure_queue(&self, index: u32, memory: &mut QueueMemory) -> Option<u16> {
         self.write(REG_QUEUE_SEL, index);
         let max = self.read(REG_QUEUE_NUM_MAX) as usize;

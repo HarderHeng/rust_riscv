@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-virtio-console = ["dep:spin"]
+virtio-console = []
 
 [dependencies]
 # Platform-agnostic kernel
@@ -16,4 +16,5 @@ hal = { workspace = true }
 
 # RISC-V common utilities (startup code, CSR access)
 riscv-common = { workspace = true }
-spin = { workspace = true, optional = true }
+spin = { workspace = true }
+

@@ -129,10 +129,13 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
         self.io.write_str(self.prompt);
     }
 
-    /// Clear current input line
+    /// Clear current input line.
+    ///
+    /// Only resets `input_len` — do not `fill(0)` the whole buffer. Leaves
+    /// `skip_lf_after_cr` alone so a CR-terminated line still consumes the
+    /// following LF; Ctrl+C clears that flag explicitly.
     fn clear_input(&mut self) {
         self.input_len = 0;
-        self.input_buffer.fill(0);
     }
 
     /// Process a single input character
@@ -289,14 +292,8 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
         false
     }
 
-    /// Start the shell (display welcome message and prompt)
+    /// Start the shell prompt (boot banner is printed once by `kernel_main`).
     pub fn start(&mut self) {
-        self.io.write_str("\r\n");
-        self.io.write_str("=================================\r\n");
-        self.io.write_str("  RISC-V Bare-Metal Kernel Shell\r\n");
-        self.io.write_str("=================================\r\n");
-        self.io.write_str("Type 'help' for available commands.\r\n");
-        self.io.write_str("\r\n");
         self.show_prompt();
     }
 
@@ -312,7 +309,7 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
             self.poll();
 
             // WFI to save power while waiting for input
-            #[cfg(target_arch = "riscv32")]
+            #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
             unsafe {
                 core::arch::asm!("wfi");
             }

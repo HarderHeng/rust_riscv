@@ -15,6 +15,7 @@ static PLATFORM: Bl808E902Platform = Bl808E902Platform::new();
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
     PLATFORM.console().init();
+    kernel::identity::register_platform_identity(PLATFORM.name(), PLATFORM.arch());
     PLATFORM
         .console()
         .puts("BL808 E902 (riscv32emc) - M0 Core\r\n");

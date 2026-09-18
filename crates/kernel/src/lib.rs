@@ -33,6 +33,7 @@
 #![no_std]
 #![deny(missing_docs)]
 
+pub mod identity;
 pub mod shell;
 pub mod time;
 pub mod trap;
@@ -105,8 +106,9 @@ pub fn kernel_main<P: Platform>(
     commands: &'static [Command],
     prompt: &'static str,
 ) -> ! {
-    // Initialize console
+    // Initialize console and print the single boot banner
     platform.console().init();
+    identity::register_platform_identity(platform.name(), platform.arch());
     platform.console().puts("\r\n");
     platform
         .console()
@@ -115,6 +117,11 @@ pub fn kernel_main<P: Platform>(
     platform
         .console()
         .puts("=================================\r\n");
+    platform.console().puts("Platform: ");
+    platform.console().puts(platform.name());
+    platform.console().puts(" (");
+    platform.console().puts(platform.arch());
+    platform.console().puts(")\r\n");
     platform.console().puts("\r\n");
 
     // Initialize trap handling

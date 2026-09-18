@@ -6,7 +6,7 @@
 
 RISC-V 32 位裸机内核（`no_std` / `no_main`），运行于 QEMU `virt` 虚拟机。当前是**多平台 HAL workspace 架构**：内核逻辑与硬件实现分离，QEMU 板完整可用，BL808 真实芯片板为占位骨架。
 
-代码结构以 `crates/` 下的 workspace 为准；仓库根目录的 `src/` 与链接脚本是**已迁移的旧版遗留**（部分引用可能过时，注意甄别）。
+代码结构以 `crates/` 下的 workspace 为准。根目录仅保留 workspace 清单、`qemu-runner.sh`（Cargo runner）与文档；板级 `linker.ld` / `build.rs` 在各自 `crates/boards/*` 下。
 
 ## 红线（不可违反）
 

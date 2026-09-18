@@ -15,6 +15,7 @@ static PLATFORM: Bl808E907Platform = Bl808E907Platform::new();
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
     PLATFORM.console().init();
+    kernel::identity::register_platform_identity(PLATFORM.name(), PLATFORM.arch());
     PLATFORM
         .console()
         .puts("BL808 E907 (riscv32imafc) - M4F Application Core with Hardware FPU\r\n");

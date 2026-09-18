@@ -43,6 +43,14 @@ fn uptime_seconds() -> u64 {
     TICKS.load(Ordering::Relaxed) as u64 / TICK_HZ
 }
 
+/// Console IRQ: drain UART FIFO into the soft RX ring (or ack virtio), so PLIC
+/// claim/complete can finish and `wfi` can sleep until the next character.
+/// Shell `poll`/`run` remain the backup consumer via `try_getc`.
+fn console_irq_handler(_irq: u32) {
+    use hal::Platform;
+    PLATFORM.console().drain_irq();
+}
+
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Kernel entry point
@@ -79,6 +87,12 @@ extern "C" fn kernel_main() -> ! {
     kernel::time::register_uptime_source(uptime_seconds);
     Clint::new().set_timeout(0, MTIME_HZ / TICK_HZ);
     kernel::trap::enable_timer_interrupt();
+
+    // Register console IRQ drain (UART0=10 or virtio=1). Required so the
+    // pending RX condition is cleared; without this, MEI re-fires forever.
+    let console_irq = PLATFORM.console_irq();
+    kernel::trap::register_irq_handler(console_irq, console_irq_handler)
+        .expect("console IRQ registration failed");
 
     // Hand off to kernel
     kernel::kernel_main(&PLATFORM, commands::COMMANDS, "riscv32> ")
