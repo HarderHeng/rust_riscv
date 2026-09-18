@@ -72,12 +72,12 @@ impl Uart16550a {
 impl SerialPort for Uart16550a {
     /// Initializes the UART to 38400 8N1 with TX/RX FIFOs enabled.
     fn init(&self) {
-        self.write(reg::IER, 0x00);     // disable all interrupts
+        self.write(reg::IER, 0x00); // disable all interrupts
 
         self.write(reg::LCR, LCR_DLAB); // enable divisor latch (bit 7=1)
-        // 38400 bps: divisor = 1_843_200 / (16 × 38400) = 3
-        self.write(reg::DLL, 0x03);     // DLL (low byte of divisor)
-        self.write(reg::DLM, 0x00);     // DLM (high byte of divisor)
+                                        // 38400 bps: divisor = 1_843_200 / (16 × 38400) = 3
+        self.write(reg::DLL, 0x03); // DLL (low byte of divisor)
+        self.write(reg::DLM, 0x00); // DLM (high byte of divisor)
 
         // LCR = 0x03: 8 data bits (bits 1-0=11), no parity (bit 3=0), 1 stop bit (bit 2=0), DLAB cleared (bit 7=0)
         self.write(reg::LCR, 0x03);

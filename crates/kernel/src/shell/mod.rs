@@ -6,9 +6,9 @@
 //! - Command parsing
 //! - Line editing support
 
-pub mod shell;
 pub mod commands;
+pub mod shell;
 
 // Re-export commonly used types
-pub use shell::{Command, CommandHandler, Shell, ShellIO};
 pub use commands::COMMANDS;
+pub use shell::{Command, CommandHandler, Shell, ShellIO};

@@ -100,8 +100,8 @@ pub trait ShellIO {
 ```
 
 **Implementations**:
-- `UartIO`: Wraps existing `uart::Uart` for UART-based I/O
-- Future: `MockIO` for testing
+- `PlatformIO` (`crates/kernel/src/lib.rs`): adapts a HAL `Platform` console
+- Test-only `MockIo` (`shell.rs`): drives host-side Shell unit tests
 
 ### 4.2 Command System
 
@@ -318,15 +318,22 @@ Error: <error message>
 
 ### 10.1 Unit Tests
 
-- Command parsing (tokenization)
-- Individual command handlers
-- Buffer management
+Implemented in `crates/kernel/src/shell/shell.rs` with a `heapless`-backed
+`MockIo`; they run on the host without QEMU:
+
+```bash
+cargo test -p kernel --target x86_64-unknown-linux-gnu --lib
+```
+
+The suite covers command dispatch, unknown-command diagnostics, backspace
+editing, Ctrl+C cancellation, and treating CRLF as one line terminator.
 
 ### 10.2 Integration Tests
 
-- Full shell loop with MockIO
-- Command execution
-- Error handling
+- `scripts/qemu_smoke_test.py` boots the QEMU board and verifies UART receive
+  interrupts plus `echo qemu-smoke` end-to-end
+- Command execution through virtio-console (planned)
+- Error handling across the board/kernel boundary (planned)
 
 ### 10.3 Manual Testing
 

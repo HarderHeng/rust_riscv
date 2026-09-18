@@ -21,8 +21,9 @@ pub trait ShellIO {
 ```
 
 **Implementations**:
-- `UartIO` (polling-based UART I/O) - `/home/heng/test/rust_riscv/src/shell/uart_io.rs`
-- Future: interrupt-driven I/O, MockIO for testing
+- `PlatformIO` (`crates/kernel/src/lib.rs`): adapts a HAL `Platform` console
+- Test-only `MockIo` (`crates/kernel/src/shell/shell.rs`): drives host-side unit tests
+- Future: interrupt-driven I/O
 
 ### 2. Command System (`shell.rs`)
 
@@ -148,7 +149,7 @@ That's it! Your command is now available in the shell.
 ### Supported
 
 - **Backspace/DEL (0x08, 0x7F)**: Delete last character
-- **Enter (CR/LF)**: Execute command
+- **Enter (CR/LF)**: Execute command; a CRLF pair is consumed as one terminator
 - **Ctrl+C (0x03)**: Cancel current line
 - **Ctrl+L (0x0C)**: Clear screen
 - **Character echo**: All printable ASCII characters
@@ -202,38 +203,41 @@ Type 'help' for available commands.
 ### Manual Testing in QEMU
 
 ```bash
-cargo run
+cargo run -p qemu-virt-rv32 --release
 ```
 
 Interactive commands to test:
 ```
-kernel> help
-kernel> echo hello world
-kernel> version
-kernel> meminfo
-kernel> clear
-kernel> reboot
+riscv32> help
+riscv32> echo hello world
+riscv32> version
+riscv32> meminfo
+riscv32> clear
+riscv32> reboot
 ```
 
-### Unit Tests (Future)
+### Host Unit Tests
 
-To add unit tests, create a MockIO implementation:
+`crates/kernel/src/shell/shell.rs` includes a `heapless`-backed `MockIo`, so
+shell behavior can be tested without QEMU or an allocator:
 
-```rust
-struct MockIO {
-    input: Vec<u8>,
-    output: Vec<u8>,
-}
+```bash
+cargo test -p kernel --target x86_64-unknown-linux-gnu --lib
+```
 
-impl ShellIO for MockIO {
-    fn read_byte(&mut self) -> Option<u8> {
-        self.input.pop()
-    }
+The current suite covers command dispatch, unknown-command diagnostics,
+backspace editing, Ctrl+C cancellation, and CRLF handling. Use the equivalent
+host target triple on non-x86_64 Linux development machines.
 
-    fn write_byte(&mut self, byte: u8) {
-        self.output.push(byte);
-    }
-}
+### QEMU Smoke Test
+
+Build the QEMU board, then verify boot, UART receive interrupts, and command
+execution without manual terminal interaction:
+
+```bash
+cargo build -p qemu-virt-rv32 --release
+python3 scripts/qemu_smoke_test.py \
+  target/riscv32imac-unknown-none-elf/release/qemu-virt-rv32
 ```
 
 ## File Organization

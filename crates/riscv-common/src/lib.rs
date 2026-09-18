@@ -71,4 +71,3 @@ pub use startup_rv64::*;
 // Ensure we're compiling for a supported architecture
 #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
 compile_error!("riscv-common only supports riscv32 and riscv64 architectures");
-

@@ -6,9 +6,9 @@ authors = ["RISC-V Kernel Team"]
 description = "BL808 C906 (riscv64imac) board support - High-performance 64-bit core for Linux"
 
 [dependencies]
-hal = { path = "../../hal" }
-riscv-common = { path = "../../riscv-common" }
-kernel = { path = "../../kernel" }
+hal = { workspace = true }
+riscv-common = { workspace = true }
+kernel = { workspace = true }
 
 [[bin]]
 name = "bl808-c906"

@@ -18,7 +18,7 @@ heapless = "0.8"
 # Internal workspace crates
 hal = { path = "crates/hal" }
 riscv-common = { path = "crates/riscv-common" }
-kernel-core = { path = "crates/kernel" }
+kernel = { path = "crates/kernel" }
 
 [profile.release]
 opt-level = "z"      # Optimize for size

@@ -8,6 +8,6 @@ pub mod virtio_console;
 
 pub use clint::{Clint, MTIME_HZ};
 pub use plic::Plic;
+pub use uart_16550a::Uart16550a;
 #[cfg(feature = "virtio-console")]
 pub use virtio_console::VirtioConsole;
-pub use uart_16550a::Uart16550a;

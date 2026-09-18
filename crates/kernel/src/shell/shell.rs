@@ -7,7 +7,7 @@
 //! - Line editing support
 
 use core::fmt;
-use heapless::{Vec, String};
+use heapless::{String, Vec};
 
 /// Maximum length of input buffer
 const INPUT_BUFFER_SIZE: usize = 256;
@@ -96,6 +96,9 @@ pub struct Shell<'a, IO: ShellIO> {
     /// Current input length
     input_len: usize,
 
+    /// Whether the next line feed terminates a preceding carriage return.
+    skip_lf_after_cr: bool,
+
     /// Command registry (sorted by name for binary search)
     commands: &'a [Command],
 
@@ -115,6 +118,7 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
             io,
             input_buffer: [0; INPUT_BUFFER_SIZE],
             input_len: 0,
+            skip_lf_after_cr: false,
             commands,
             prompt,
         }
@@ -135,6 +139,13 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
     ///
     /// Returns `true` if a complete line is ready to be processed.
     fn process_char(&mut self, ch: u8) -> bool {
+        if ch == b'\n' && self.skip_lf_after_cr {
+            self.skip_lf_after_cr = false;
+            return false;
+        }
+
+        self.skip_lf_after_cr = ch == b'\r';
+
         match ch {
             // Backspace or DEL
             0x08 | 0x7F => {
@@ -166,8 +177,8 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
                 self.show_prompt();
                 // Re-display current input
                 if self.input_len > 0 {
-                    let input = core::str::from_utf8(&self.input_buffer[..self.input_len])
-                        .unwrap_or("");
+                    let input =
+                        core::str::from_utf8(&self.input_buffer[..self.input_len]).unwrap_or("");
                     self.io.write_str(input);
                 }
                 false
@@ -199,8 +210,7 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
         }
 
         // Convert input buffer to string
-        let input = core::str::from_utf8(&self.input_buffer[..self.input_len])
-            .ok()?;
+        let input = core::str::from_utf8(&self.input_buffer[..self.input_len]).ok()?;
 
         // Split by whitespace and collect into Vec
         let mut tokens: Vec<String<64>, MAX_ARGS> = Vec::new();
@@ -238,9 +248,7 @@ impl<'a, IO: ShellIO> Shell<'a, IO> {
         match self.find_command(cmd_name) {
             Some(cmd) => {
                 // Convert String<64> to &str for the handler
-                let arg_refs: Vec<&str, MAX_ARGS> = args.iter()
-                    .map(|s| s.as_str())
-                    .collect();
+                let arg_refs: Vec<&str, MAX_ARGS> = args.iter().map(|s| s.as_str()).collect();
 
                 match cmd.handler.execute(arg_refs.as_slice(), &mut self.io) {
                     Ok(()) => {}
@@ -348,4 +356,123 @@ macro_rules! sorted_commands {
         const _: () = assert!(is_sorted(COMMANDS), "Commands must be sorted by name");
         COMMANDS
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use heapless::Vec;
+
+    struct MockIo {
+        input: Vec<u8, 512>,
+        input_index: usize,
+        output: Vec<u8, 512>,
+    }
+
+    impl MockIo {
+        fn with_input(input: &[u8]) -> Self {
+            let mut mock = Self {
+                input: Vec::new(),
+                input_index: 0,
+                output: Vec::new(),
+            };
+            mock.input.extend_from_slice(input).unwrap();
+            mock
+        }
+
+        fn output(&self) -> &str {
+            core::str::from_utf8(self.output.as_slice()).unwrap()
+        }
+    }
+
+    impl ShellIO for MockIo {
+        fn read_byte(&mut self) -> Option<u8> {
+            let byte = self.input.get(self.input_index).copied();
+            if byte.is_some() {
+                self.input_index += 1;
+            }
+            byte
+        }
+
+        fn write_byte(&mut self, byte: u8) {
+            self.output.push(byte).unwrap();
+        }
+    }
+
+    struct TestEchoCommand;
+
+    impl CommandHandler for TestEchoCommand {
+        fn execute(&self, args: &[&str], io: &mut dyn ShellIO) -> Result<(), &'static str> {
+            io.write_str("handled: ");
+            for (index, arg) in args.iter().enumerate() {
+                if index != 0 {
+                    io.write_byte(b' ');
+                }
+                io.write_str(arg);
+            }
+            io.write_str("\r\n");
+            Ok(())
+        }
+
+        fn help(&self) -> &'static str {
+            "Test command"
+        }
+    }
+
+    static TEST_ECHO_COMMAND: TestEchoCommand = TestEchoCommand;
+    static TEST_COMMANDS: &[Command] = &[Command {
+        name: "echo",
+        handler: &TEST_ECHO_COMMAND,
+    }];
+
+    fn shell_with_input(input: &[u8]) -> Shell<'static, MockIo> {
+        Shell::new(MockIo::with_input(input), TEST_COMMANDS, "test> ")
+    }
+
+    #[test]
+    fn dispatches_a_command_and_reprints_the_prompt() {
+        let mut shell = shell_with_input(b"echo hello world\r");
+
+        assert!(shell.poll());
+        assert_eq!(
+            shell.io.output(),
+            "echo hello world\r\nhandled: hello world\r\ntest> "
+        );
+    }
+
+    #[test]
+    fn backspace_edits_the_input_before_dispatch() {
+        let mut shell = shell_with_input(b"echo hellp\x08o\r");
+
+        assert!(shell.poll());
+        assert!(shell.io.output().contains("\x08 \x08"));
+        assert!(shell.io.output().contains("handled: hello\r\n"));
+    }
+
+    #[test]
+    fn control_c_discards_the_current_line() {
+        let mut shell = shell_with_input(b"echo ignored\x03echo ok\r");
+
+        assert!(shell.poll());
+        assert!(shell.io.output().contains("^C\r\ntest> "));
+        assert!(shell.io.output().contains("handled: ok\r\n"));
+        assert!(!shell.io.output().contains("handled: ignored\r\n"));
+    }
+
+    #[test]
+    fn crlf_is_processed_as_one_line_terminator() {
+        let mut shell = shell_with_input(b"echo ok\r\n");
+
+        assert!(shell.poll());
+        assert!(!shell.poll());
+        assert_eq!(shell.io.output(), "echo ok\r\nhandled: ok\r\ntest> ");
+    }
+
+    #[test]
+    fn unknown_commands_report_an_error() {
+        let mut shell = shell_with_input(b"missing\r");
+
+        assert!(shell.poll());
+        assert!(shell.io.output().contains("Command not found: missing\r\n"));
+    }
 }

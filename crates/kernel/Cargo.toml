@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 # HAL trait definitions
-hal = { path = "../hal" }
+hal = { workspace = true }
 
 # Spinlock for interrupt-safe synchronization
-spin = { version = "0.9", features = ["portable_atomic"] }
+spin = { workspace = true }
 
 # Fixed-size collections (no allocator needed)
-heapless = "0.8"
+heapless = { workspace = true }

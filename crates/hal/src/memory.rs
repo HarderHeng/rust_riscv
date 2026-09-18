@@ -61,13 +61,17 @@ impl MemoryLayout {
     /// # Returns
     /// A range from the lowest address to the highest address in the layout.
     pub fn total_range(&self) -> MemoryRegion {
-        let min = self.text.start
+        let min = self
+            .text
+            .start
             .min(self.data.start)
             .min(self.bss.start)
             .min(self.stack.start)
             .min(self.heap.start);
 
-        let max = self.text.end
+        let max = self
+            .text
+            .end
             .max(self.data.end)
             .max(self.bss.end)
             .max(self.stack.end)

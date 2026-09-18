@@ -1,0 +1,25 @@
+stages:
+  - verify
+
+verify:
+  image: rust:nightly
+  stage: verify
+  before_script:
+    - rustup component add rustfmt
+    - rustup target add riscv32imac-unknown-none-elf
+  script:
+    - cargo fmt --check
+    - cargo test -p kernel --target x86_64-unknown-linux-gnu --lib
+    - cargo check -p qemu-virt-rv32 --release
+    - cargo check -p qemu-virt-rv32 --release --features virtio-console
+
+qemu-smoke:
+  image: rust:nightly
+  stage: verify
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends python3 qemu-system-misc
+    - rustup target add riscv32imac-unknown-none-elf
+  script:
+    - cargo build -p qemu-virt-rv32 --release
+    - python3 scripts/qemu_smoke_test.py target/riscv32imac-unknown-none-elf/release/qemu-virt-rv32

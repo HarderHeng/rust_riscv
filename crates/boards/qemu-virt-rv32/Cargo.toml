@@ -9,11 +9,11 @@ virtio-console = ["dep:spin"]
 
 [dependencies]
 # Platform-agnostic kernel
-kernel = { path = "../../kernel" }
+kernel = { workspace = true }
 
 # HAL trait definitions
-hal = { path = "../../hal" }
+hal = { workspace = true }
 
 # RISC-V common utilities (startup code, CSR access)
-riscv-common = { path = "../../riscv-common" }
+riscv-common = { workspace = true }
 spin = { workspace = true, optional = true }
